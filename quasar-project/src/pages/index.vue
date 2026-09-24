@@ -1,7 +1,7 @@
 <template>
   <q-layout view="lHh Lpr lFf">
     <q-header elevated>
-      <q-toolbar>
+      <q-toolbar class="background-header-default text-white">
         <q-btn
           flat
           dense
@@ -11,15 +11,21 @@
           @click="toggleLeftDrawer"
         />
 
-        <q-toolbar-title> Quasar App </q-toolbar-title>
+        <q-toolbar-title> BeBe </q-toolbar-title>
 
-        <div>Quasar v{{ $q.version }}</div>
+        <!--to do implement user settings page with user photo above -->
+        <q-btn 
+          color = "#3e010e"
+          text-color = "white"
+          @click="openSettings">
+            Login
+        </q-btn>
       </q-toolbar>
     </q-header>
 
     <q-drawer v-model="leftDrawerOpen" show-if-above bordered>
       <q-list>
-        <q-item-label header> Essential Links </q-item-label>
+        <q-item-label header> Chats </q-item-label>
 
         <EssentialLink
           v-for="link in linksList"
@@ -43,46 +49,16 @@ import EssentialLink, {
 
 const linksList: EssentialLinkProps[] = [
   {
-    label: "Docs",
-    caption: "quasar.dev",
-    icon: "school",
+    label: "Zahar",
+    caption: "last-message",
+    // icon: "",
     link: "https://quasar.dev"
   },
   {
-    label: "GitHub",
-    caption: "github.com/quasarframework",
-    icon: "code",
+    label: "Nikita",
+    caption: "last-message",
+    // icon: "code",
     link: "https://github.com/quasarframework"
-  },
-  {
-    label: "Discord Chat Channel",
-    caption: "chat.quasar.dev",
-    icon: "chat",
-    link: "https://chat.quasar.dev"
-  },
-  {
-    label: "Forum",
-    caption: "forum.quasar.dev",
-    icon: "record_voice_over",
-    link: "https://forum.quasar.dev"
-  },
-  {
-    label: "Twitter",
-    caption: "@quasarframework",
-    icon: "rss_feed",
-    link: "https://twitter.quasar.dev"
-  },
-  {
-    label: "Facebook",
-    caption: "@QuasarFramework",
-    icon: "public",
-    link: "https://facebook.quasar.dev"
-  },
-  {
-    label: "Quasar Awesome",
-    caption: "Community Quasar projects",
-    icon: "favorite",
-    link: "https://awesome.quasar.dev"
   }
 ];
 
