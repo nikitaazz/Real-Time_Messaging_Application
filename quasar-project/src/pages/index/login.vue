@@ -1,5 +1,11 @@
 <template>
-    <q-page class="flex flex-center">
+    <q-page class="flex flex-center column">
+        <div>
+            <q-input filled v-model="email" label="Email" type="email" />
+            <q-input filled v-model="password" label="Password" type="password" />
+            <q-btn text-color="white" class="background-header-default full-width" @click="login">Login</q-btn>
+        </div>
+        <br />
         <div>
             <q-typography variant="h4" class="text-center">I don't have an account yet </q-typography>
             <router-link to="/registration" class="registration-link">
