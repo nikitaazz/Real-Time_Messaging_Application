@@ -2,3 +2,12 @@
 .background-header-default {
   background: $background-header-default;
 }
+
+$registration_tag: #a40000;
+
+.registration-link {
+  color: $registration_tag;
+  font-weight: 500;
+  text-decoration: none;
+}
+

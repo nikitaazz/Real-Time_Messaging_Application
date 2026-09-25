@@ -17,7 +17,7 @@
         <q-btn 
           color = "#3e010e"
           text-color = "white"
-          @click="openSettings">
+          to = "/login">
             Login
         </q-btn>
       </q-toolbar>
