@@ -1,45 +1,70 @@
 <template>
-  <q-layout view="lHh Lpr lFf">
-    <q-header>
-      <q-toolbar class="background-header-default text-white">
-        <q-toolbar-title>BeBe</q-toolbar-title>
-
-        <q-btn
-          color="#3e010e"
-          icon="arrow_back"
-          text-color="white"
-          to="/main"
-          label="Back"
-        />
-      </q-toolbar>
-    </q-header>
-
-    <q-page-container>
-        <q-typography variant="h4" class="text-center h1 column">Settings</q-typography>
-        <q-typography variant="h6" class="text-center">Change your status and notification settings</q-typography>
-        <q-select
-            v-model="selected"
-            :options="options"
-            label="Choose option"
-        />
-        <q-typography variant="h6" class="text-center">Enable or disable notifications</q-typography>
-        <q-toggle
-            v-model="enabled"
-            label="Notifications"
-        />
-    </q-page-container>
-  </q-layout>
+  <q-page class="settings-page q-pa-md">
+    <div class="row justify-end q-mb-md">
+      <q-btn
+        class="theme-toggle"
+        flat round
+        :icon="isDark ? 'light_mode' : 'dark_mode'"
+        aria-label="Toggle theme"
+        @click="toggleTheme"
+      />
+    </div>
+    <q-card class="settings-card q-pa-lg">
+      <div class="row items-center justify-between q-mb-lg"
+        ><div
+          ><div class="text-h4">Settings</div
+          ><div class="text-grey-7">Manage presence and notifications</div></div
+        ><q-btn flat icon="arrow_back" label="Back to chat" to="/main"
+      /></div>
+      <q-separator />
+      <div class="text-subtitle1 text-weight-medium q-mt-lg">Presence</div>
+      <q-option-group
+        v-model="presence"
+        :options="presenceOptions"
+        type="radio"
+        inline
+        class="q-mt-sm"
+      />
+      <div class="text-subtitle1 text-weight-medium q-mt-lg">Notifications</div>
+      <q-toggle
+        v-model="store.notifications"
+        label="Message notifications when online"
+      />
+      <q-toggle v-model="store.mentionOnly" label="Only notify for mentions" />
+      <q-banner class="q-mt-lg bg-grey-2"
+        >Mock state is kept in Pinia for this prototype. Changes are immediately
+        reflected in the chat.</q-banner
+      >
+      <q-btn
+        color="negative"
+        outline
+        label="Log out"
+        class="q-mt-xl"
+        @click="logout"
+      />
+    </q-card>
+  </q-page>
 </template>
 
 <script setup lang="ts">
-import { ref } from "vue";
+import { computed } from "vue";
+import { useRouter } from "vue-router";
+import { useChatStore, type Presence } from "@/stores/example-store";
+import { useTheme } from "@/composables/useTheme";
 
-const selected = ref(null);
-const enabled = ref(false);
-
-const options = [
-  "Ofline",
-  "Online",
-  "Away"
-];
+const router = useRouter();
+const store = useChatStore();
+const { isDark, toggleTheme } = useTheme();
+const presence = computed({
+  get: () => store.user?.status ?? "Offline",
+  set: (value: Presence) => store.setPresence(value)
+});
+const presenceOptions = ["Online", "DND", "Offline"].map(value => ({
+  label: value,
+  value
+}));
+function logout() {
+  store.logout();
+  void router.push("/login");
+}
 </script>

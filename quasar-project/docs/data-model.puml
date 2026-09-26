@@ -1,0 +1,49 @@
+@startuml
+title BeBe Phase 1 logical data model
+
+entity User {
+  * id : UUID
+  --
+  email : string
+  firstName : string
+  lastName : string
+  nickName : string <<unique>>
+  presence : Online | DND | Offline
+  notificationsEnabled : boolean
+  mentionOnly : boolean
+}
+entity Channel {
+  * id : UUID
+  --
+  name : string
+  visibility : public | private
+  ownerId : UUID
+  lastActivityAt : datetime
+}
+entity Membership { * userId : UUID * channelId : UUID role : owner | member joinedAt : datetime }
+entity Message { * id : UUID channelId : UUID authorId : UUID body : string createdAt : datetime }
+entity Mention { * messageId : UUID * userId : UUID }
+entity Notification { * id : UUID recipientId : UUID channelId : UUID messageId : UUID reason : message | mention read : boolean }
+entity TypingState { * userId : UUID * channelId : UUID draft : string startedAt : datetime }
+entity KickRecord { * userId : UUID * channelId : UUID kickedBy : UUID permanent : boolean createdAt : datetime expiresAt : datetime? }
+entity Invitation { * userId : UUID * channelId : UUID invitedAt : datetime revokedAt : datetime? }
+
+User ||--o{ Membership
+Channel ||--o{ Membership
+User ||--o{ Message : authors
+Channel ||--o{ Message
+Message ||--o{ Mention
+User ||--o{ Mention : receives
+User ||--o{ Notification
+Channel ||--o{ Notification
+User ||--o{ TypingState
+Channel ||--o{ TypingState
+User ||--o{ KickRecord
+Channel ||--o{ KickRecord
+User ||--o{ Invitation
+Channel ||--o{ Invitation
+
+note "Public channels may be joined by anyone. Private channels require invitation." as N1
+note "KickRecord with permanent=true has expiresAt null; otherwise records expire after 30 days." as N2
+note "Notifications respect channel visibility, Online presence, DND/Offline suppression, and mention-only preference." as N3
+@enduml

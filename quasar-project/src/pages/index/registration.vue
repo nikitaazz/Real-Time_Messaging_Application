@@ -1,22 +1,85 @@
 <template>
-    <q-page class="flex flex-center column">
-        <div>
-            <q-typography variant="h4" class="text-center">Private information </q-typography>
-            <q-input filled v-model="email" label="Email" type="email" />
-            <q-input filled v-model="password" label="Password" type="password" />
-            <q-typography variant="h4" class="text-center">Username will be displayed to others </q-typography>
-            <q-input filled v-model="username" label="Username" type="text" />
-            <q-btn text-color="white" class="background-header-default full-width" to = "/main"  @click="register">Register</q-btn>
-        </div>
-        <div>
-            <q-typography variant="h4" class="text-center">I already have an account </q-typography>
-            <router-link to="/login" class="registration-link">
-                Login
-            </router-link>
-        </div>
-    </q-page>
+  <q-page class="auth-page flex flex-center q-pa-md">
+    <q-btn
+      class="theme-toggle absolute-top-right q-ma-md"
+      flat round
+      :icon="isDark ? 'light_mode' : 'dark_mode'"
+      aria-label="Toggle theme"
+      @click="toggleTheme"
+    />
+    <q-card class="auth-card q-pa-lg">
+      <div class="text-h4 text-weight-bold q-mb-sm">Join BeBe</div>
+      <div class="text-grey-7 q-mb-lg">Create your workspace identity.</div>
+      <q-form @submit="register">
+        <q-input
+          v-model="firstName"
+          label="First name"
+          outlined
+          class="q-mb-md"
+          :rules="[value => !!value || 'First name is required']"
+        />
+        <q-input
+          v-model="lastName"
+          label="Last name"
+          outlined
+          class="q-mb-md"
+          :rules="[value => !!value || 'Last name is required']"
+        />
+        <q-input
+          v-model="nickName"
+          label="Unique nickname"
+          outlined
+          class="q-mb-md"
+          :rules="[value => !!value || 'Nickname is required']"
+        />
+        <q-input
+          v-model="email"
+          label="Email"
+          type="email"
+          outlined
+          class="q-mb-md"
+          :rules="[value => !!value || 'Email is required']"
+        />
+        <q-input
+          v-model="password"
+          label="Password"
+          type="password"
+          outlined
+          class="q-mb-lg"
+          :rules="[value => value.length >= 6 || 'Use at least 6 characters']"
+        />
+        <q-btn
+          type="submit"
+          color="primary"
+          label="Register"
+          class="full-width"
+          unelevated
+        />
+      </q-form>
+      <div class="q-mt-lg text-center"
+        >Already a member? <router-link to="/login">Login</router-link></div
+      >
+    </q-card>
+  </q-page>
 </template>
 
-<script></script>
+<script setup lang="ts">
+import { ref } from "vue";
+import { useRouter } from "vue-router";
+import { useChatStore } from "@/stores/example-store";
+import { useTheme } from "@/composables/useTheme";
 
-<style></style>
+const router = useRouter();
+const store = useChatStore();
+const { isDark, toggleTheme } = useTheme();
+const firstName = ref("");
+const lastName = ref("");
+const nickName = ref("");
+const email = ref("");
+const password = ref("");
+
+function register() {
+  store.register(email.value, firstName.value, lastName.value, nickName.value);
+  void router.push("/main");
+}
+</script>
