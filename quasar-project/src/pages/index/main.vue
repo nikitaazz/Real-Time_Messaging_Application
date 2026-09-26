@@ -16,9 +16,10 @@
         <!--to do implement user settings page with user photo above -->
         <q-btn 
           color = "#3e010e"
+          icon="settings"
           text-color = "white"
-          to = "/login">
-            Login
+          to = "/settings">
+            Account
         </q-btn>
       </q-toolbar>
     </q-header>
@@ -40,7 +41,7 @@
     </q-page-container>
     <q-footer>
       <q-input
-        v-model="message"
+        v-model="message_cli"
         outlined
         placeholder="Write a message..."
       >
@@ -49,7 +50,7 @@
             flat
             round
             icon="send"
-            @click="sendMessage"
+            @click="sendMessageCLI"
           />
         </template>
       </q-input>

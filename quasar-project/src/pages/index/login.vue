@@ -1,6 +1,7 @@
 <template>
     <q-page class="flex flex-center column">
         <div>
+            <q-typography variant="h4" class="text-center">Welcome back to BeBe!</q-typography>
             <q-input filled v-model="email" label="Email" type="email" />
             <q-input filled v-model="password" label="Password" type="password" />
             <q-btn text-color="white" class="background-header-default full-width" to = "/main" @click="login">Login</q-btn>

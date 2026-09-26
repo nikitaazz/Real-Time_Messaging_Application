@@ -2,7 +2,7 @@
   <q-page>
       <q-btn text-color="white" class="background-header-default width" to = "/login" @click="login">Login</q-btn>
       <q-btn text-color="white" class="background-header-default width" to = "/registration" @click="register">Register</q-btn>
-      <q-btn text-color="white" class="background-header-default width" to = "/main" @click="main">Main</q-btn>
+      <!-- <q-btn text-color="white" class="background-header-default width" to = "/main" @click="main">Main</q-btn> -->
   </q-page>
 </template>
 
