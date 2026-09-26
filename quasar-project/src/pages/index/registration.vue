@@ -6,7 +6,7 @@
             <q-input filled v-model="password" label="Password" type="password" />
             <q-typography variant="h4" class="text-center">Username will be displayed to others </q-typography>
             <q-input filled v-model="username" label="Username" type="text" />
-            <q-btn text-color="white" class="background-header-default full-width" @click="register">Register</q-btn>
+            <q-btn text-color="white" class="background-header-default full-width" to = "/main"  @click="register">Register</q-btn>
         </div>
         <div>
             <q-typography variant="h4" class="text-center">I already have an account </q-typography>

@@ -38,6 +38,7 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | '//(index)'
       | '//login'
+      | '//main'
       | '//registration'
       | '//second'
     >,
@@ -51,6 +52,13 @@ declare module 'vue-router/auto-routes' {
     '//login': RouteRecordInfo<
       '//login',
       '/login',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '//main': RouteRecordInfo<
+      '//main',
+      '/main',
       Record<never, never>,
       Record<never, never>,
       | never
@@ -94,6 +102,7 @@ declare module 'vue-router/auto-routes' {
         | '/'
         | '//(index)'
         | '//login'
+        | '//main'
         | '//registration'
         | '//second'
       views:
@@ -112,6 +121,14 @@ declare module 'vue-router/auto-routes' {
     'src/pages/index/login.vue': {
       routes:
         | '//login'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/index/main.vue': {
+      routes:
+        | '//main'
       views:
         | never
       pathParamNames:

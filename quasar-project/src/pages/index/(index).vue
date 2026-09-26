@@ -1,18 +1,8 @@
 <template>
   <q-page>
-    <q-infinite-scroll
-      @load="loadMore"
-      :offset="250"
-    >
-      <q-item
-        v-for="item in items"
-        :key="item"
-      >
-        <q-item-section>
-          Item {{ item }}
-        </q-item-section>
-      </q-item>
-    </q-infinite-scroll>
+      <q-btn text-color="white" class="background-header-default width" to = "/login" @click="login">Login</q-btn>
+      <q-btn text-color="white" class="background-header-default width" to = "/registration" @click="register">Register</q-btn>
+      <q-btn text-color="white" class="background-header-default width" to = "/main" @click="main">Main</q-btn>
   </q-page>
 </template>
 

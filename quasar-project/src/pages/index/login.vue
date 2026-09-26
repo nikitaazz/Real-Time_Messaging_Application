@@ -3,7 +3,7 @@
         <div>
             <q-input filled v-model="email" label="Email" type="email" />
             <q-input filled v-model="password" label="Password" type="password" />
-            <q-btn text-color="white" class="background-header-default full-width" @click="login">Login</q-btn>
+            <q-btn text-color="white" class="background-header-default full-width" to = "/main" @click="login">Login</q-btn>
         </div>
         <br />
         <div>
