@@ -15,16 +15,18 @@
     </q-header>
 
     <q-page-container>
-      <q-select
-        v-model="selected"
-        :options="options"
-        label="Choose option"
-      />
-
-      <q-toggle
-        v-model="enabled"
-        label="Notifications"
-      />
+        <q-typography variant="h4" class="text-center h1 column">Settings</q-typography>
+        <q-typography variant="h6" class="text-center">Change your status and notification settings</q-typography>
+        <q-select
+            v-model="selected"
+            :options="options"
+            label="Choose option"
+        />
+        <q-typography variant="h6" class="text-center">Enable or disable notifications</q-typography>
+        <q-toggle
+            v-model="enabled"
+            label="Notifications"
+        />
     </q-page-container>
   </q-layout>
 </template>

@@ -44,7 +44,8 @@
         v-model="message_cli"
         outlined
         placeholder="Write a message..."
-        class="background-cli-default message-input"
+        class="background-cli-default"
+        dark = true
       >
         <template v-slot:append>
           <q-btn
