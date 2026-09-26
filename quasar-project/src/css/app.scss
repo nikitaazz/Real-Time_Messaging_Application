@@ -3,6 +3,11 @@
   background: $background-header-default;
 }
 
+.background-cli-default {
+  background: $background-cli-default;
+}
+
+
 $registration_tag: #a40000;
 
 .registration-link {
@@ -11,3 +16,7 @@ $registration_tag: #a40000;
   text-decoration: none;
 }
 
+.message-input :deep(.q-field__native::placeholder) {
+  color: white;
+  opacity: 1;
+}

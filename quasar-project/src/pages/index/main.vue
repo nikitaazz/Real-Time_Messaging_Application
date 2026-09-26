@@ -44,12 +44,14 @@
         v-model="message_cli"
         outlined
         placeholder="Write a message..."
+        class="background-cli-default message-input"
       >
         <template v-slot:append>
           <q-btn
             flat
             round
             icon="send"
+            color="white"
             @click="sendMessageCLI"
           />
         </template>

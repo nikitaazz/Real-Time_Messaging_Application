@@ -36,8 +36,8 @@ const selected = ref(null);
 const enabled = ref(false);
 
 const options = [
-  "Option 1",
-  "Option 2",
-  "Option 3"
+  "Ofline",
+  "Online",
+  "Away"
 ];
 </script>
