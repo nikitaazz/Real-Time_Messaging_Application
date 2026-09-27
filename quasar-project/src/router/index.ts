@@ -6,6 +6,7 @@ import {
   createWebHashHistory,
   createWebHistory
 } from "vue-router";
+import { useChatStore } from "@/stores/example-store";
 
 /*
  * If not building with SSR mode, you can
@@ -16,7 +17,7 @@ import {
  * with the Router instance.
  */
 
-export default defineRouter((/* { store, ssrContext } */) => {
+export default defineRouter(({ store }) => {
   const createHistory = import.meta.env.QUASAR_SERVER
     ? createMemoryHistory
     : import.meta.env.QUASAR_VUE_ROUTER_MODE === "history"
@@ -31,6 +32,11 @@ export default defineRouter((/* { store, ssrContext } */) => {
     // quasar.conf.js -> build -> vueRouterMode
     // quasar.conf.js -> build -> publicPath
     history: createHistory(import.meta.env.QUASAR_VUE_ROUTER_BASE)
+  });
+
+  Router.beforeEach(to => {
+    if ((to.path === "/main" || to.path === "/settings") && !useChatStore(store).user)
+      return "/login";
   });
 
   // enable HMR for it

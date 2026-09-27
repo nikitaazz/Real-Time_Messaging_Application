@@ -30,7 +30,6 @@ export interface KickRecord {
   kickedBy: string;
   permanent: boolean;
   createdAt: string;
-  expiresAt: string | null;
 }
 export interface Channel {
   id: string;
@@ -77,12 +76,13 @@ const channel = (
   id: string,
   name: string,
   isPrivate: boolean,
-  members: Member[]
+  members: Member[],
+  ownerId = "me"
 ): Channel => ({
   id,
   name,
   private: isPrivate,
-  ownerId: "me",
+  ownerId,
   invitedUserIds: isPrivate ? ["n"] : [],
   members,
   description: isPrivate ? "Private project planning" : "Everyone is welcome",
@@ -98,7 +98,7 @@ export const useChatStore = defineStore("chat", {
     lastName: "",
     nickName: "",
     channels: [
-      channel("general", "general", false, [me, ...people]),
+      channel("general", "general", false, [me, ...people], "n"),
       channel("project", "project-alpha", true, [me, people[0]!])
     ] as Channel[],
     selectedChannelId: "general",
@@ -121,17 +121,40 @@ export const useChatStore = defineStore("chat", {
   }),
   getters: {
     selectedChannel: state =>
-      state.channels.find(item => item.id === state.selectedChannelId) ??
-      state.channels[0],
+      state.channels.find(item => item.id === state.selectedChannelId),
     onlineMembers: state =>
       state.channels.find(item => item.id === state.selectedChannelId)
         ?.members ?? []
   },
   actions: {
+    startSession(user: Member) {
+      this.user = user;
+      const invited = channel("updates", "team-updates", true, [people[0]!], "n");
+      invited.invitedUserIds.push(user.id);
+      this.channels = [
+        channel("general", "general", false, [user, ...people], "n"),
+        channel("project", "project-alpha", true, [user, people[0]!]),
+        invited
+      ];
+      this.selectedChannelId = "general";
+      this.draft = "";
+      this.typing = false;
+      this.typingState = null;
+      this.invitations = [];
+      this.kickRecords = [];
+      this.notificationState = [];
+      this.unreadCounts = {};
+      this.notifications = true;
+      this.mentionOnly = false;
+      this.loadedHistory = 0;
+      this.commandHint = "";
+    },
     login(email: string, name = "alex") {
       this.email = email;
+      this.firstName = name;
+      this.lastName = "";
       this.nickName = name;
-      this.user = member("me", name, "", name, "Online");
+      this.startSession(member("me", name, "", name, "Online"));
     },
     register(
       email: string,
@@ -143,11 +166,14 @@ export const useChatStore = defineStore("chat", {
       this.firstName = firstName;
       this.lastName = lastName;
       this.nickName = nickName;
-      this.user = member("me", firstName, lastName, nickName, "Online");
+      this.startSession(member("me", firstName, lastName, nickName, "Online"));
     },
     logout() {
       this.user = null;
       this.draft = "";
+      this.typing = false;
+      this.typingState = null;
+      this.commandHint = "";
     },
     canAccess(item: Channel) {
       const banned = this.kickRecords.some(
@@ -157,6 +183,7 @@ export const useChatStore = defineStore("chat", {
           record.permanent
       );
       return (
+        !!this.user &&
         !banned &&
         (!item.private ||
           item.members.some(person => person.id === this.user?.id))
@@ -164,7 +191,11 @@ export const useChatStore = defineStore("chat", {
     },
     selectChannel(id: string) {
       const item = this.channels.find(channel => channel.id === id);
-      if (item && this.canAccess(item)) {
+      if (
+        item &&
+        this.canAccess(item) &&
+        item.members.some(person => person.id === this.user?.id)
+      ) {
         this.selectedChannelId = id;
         this.loadedHistory = 0;
         this.unreadCounts[id] = 0;
@@ -176,34 +207,57 @@ export const useChatStore = defineStore("chat", {
         .replace(/^#/, "")
         .replace(/\s+/g, "-")
         .toLowerCase();
-      if (!clean || this.channels.some(item => item.name === clean)) return;
+      if (!this.user || !clean || this.channels.some(item => item.name === clean)) {
+        this.commandHint = "Choose a unique channel name.";
+        return false;
+      }
       const created = channel(
         `${clean}-${Date.now()}`,
         clean,
         isPrivate,
-        this.user ? [this.user] : [me]
+        [this.user]
       );
-      created.ownerId = this.user?.id ?? "me";
+      created.ownerId = this.user.id;
       created.description = isPrivate
         ? "Private conversation"
         : "A new public channel";
       this.channels.push(created);
       this.selectedChannelId = created.id;
+      return true;
     },
     leaveChannel(id?: string) {
       const targetId = id ?? this.selectedChannelId;
-      if (this.channels.length > 1) {
-        this.channels = this.channels.filter(item => item.id !== targetId);
-        this.selectedChannelId = this.channels[0]?.id ?? "";
+      const item = this.channels.find(channel => channel.id === targetId);
+      if (!item || !this.user || !item.members.some(person => person.id === this.user?.id)) return;
+      if (item.ownerId === this.user.id) {
+        this.deleteChannel(targetId);
+        return;
       }
+      item.members = item.members.filter(person => person.id !== this.user?.id);
+      if (this.selectedChannelId === targetId)
+        this.selectedChannelId = this.channels.find(channel =>
+          channel.members.some(person => person.id === this.user?.id)
+        )?.id ?? "";
     },
     deleteChannel(id?: string) {
-      this.leaveChannel(id ?? this.selectedChannelId);
+      const targetId = id ?? this.selectedChannelId;
+      const item = this.channels.find(channel => channel.id === targetId);
+      if (!item || item.ownerId !== this.user?.id) return;
+      this.channels = this.channels.filter(channel => channel.id !== targetId);
+      if (this.selectedChannelId === targetId)
+        this.selectedChannelId = this.channels.find(channel =>
+          channel.members.some(person => person.id === this.user?.id)
+        )?.id ?? "";
     },
     sendMessage(body: string) {
       const text = body.trim();
       const item = this.selectedChannel;
-      if (!text || !item) return;
+      if (
+        !text ||
+        !item ||
+        !this.user ||
+        !item.members.some(person => person.id === this.user?.id)
+      ) return;
       const message: ChatMessage = {
         id: Date.now(),
         author: this.user?.nickName ?? "alex",
@@ -224,7 +278,7 @@ export const useChatStore = defineStore("chat", {
     },
     loadHistory() {
       const item = this.selectedChannel;
-      if (!item) return;
+      if (!item || !item.members.some(person => person.id === this.user?.id)) return;
       const start = ++this.loadedHistory;
       item.messages.unshift(
         ...Array.from({ length: 3 }, (_, index) => ({
@@ -238,39 +292,44 @@ export const useChatStore = defineStore("chat", {
     runCommand(input: string) {
       const [command, ...args] = input.trim().split(/\s+/);
       const value = args.join(" ").replace(/^#/, "");
-      this.commandHint = input.trim();
+      this.commandHint = "";
       if (command === "/join" && value) {
         const [name, visibility] = value.split(" ");
-        const item = this.channels.find(channel => channel.name === name);
+        const item = this.channels.find(channel => channel.name === name?.toLowerCase());
         if (
           item &&
           (this.canAccess(item) ||
-            item.invitedUserIds.includes(this.user?.id ?? ""))
+            (item.private &&
+              !this.kickRecords.some(record =>
+                record.channelId === item.id && record.userId === this.user?.id && record.permanent
+              ) &&
+              item.invitedUserIds.includes(this.user?.id ?? "")))
         ) {
           if (
             this.user &&
             !item.members.some(person => person.id === this.user?.id)
           )
             item.members.push(this.user);
+          item.invitedUserIds = item.invitedUserIds.filter(id => id !== this.user?.id);
           this.selectChannel(item.id);
-        } else if (visibility === "private" && name)
-          this.createChannel(name, true);
+        } else if (!item && name)
+          this.createChannel(name, visibility === "private");
+        else this.commandHint = "You cannot join this channel.";
       } else if (command === "/invite") this.invite(value);
       else if (command === "/revoke") this.revoke(value);
       else if (command === "/kick") this.kick(value);
       else if (command === "/quit") {
         if (this.selectedChannel?.ownerId === this.user?.id)
           this.deleteChannel();
-        else this.leaveChannel();
+        else this.commandHint = "Only the channel owner can close it. Use /cancel to leave.";
       } else if (command === "/cancel") {
-        if (this.selectedChannel?.ownerId === this.user?.id)
-          this.deleteChannel();
-        else this.leaveChannel();
-      } else if (command === "/list")
-        this.draft = this.channels
-          .filter(item => this.canAccess(item))
-          .map(item => `#${item.name}`)
-          .join("  ");
+        this.leaveChannel();
+      } else if (command === "/list") {
+        const item = this.selectedChannel;
+        this.commandHint = item?.members.some(person => person.id === this.user?.id)
+          ? `Members of #${item.name}: ${item.members.map(person => person.nickName).join(", ")}`
+          : "Join a channel to see its members.";
+      } else this.commandHint = "Unknown command or missing channel name.";
     },
     invite(nick: string) {
       const item = this.selectedChannel;
@@ -283,27 +342,41 @@ export const useChatStore = defineStore("chat", {
         !!target &&
         (item.private ? item.ownerId === this.user?.id : Boolean(isMember));
       if (allowed && item && target) {
+        const banned = this.kickRecords.some(record =>
+          record.channelId === item.id && record.userId === target.id && record.permanent
+        );
+        if (banned && item.ownerId !== this.user?.id) {
+          this.commandHint = "Only the channel owner can restore a banned member.";
+          return;
+        }
+        if (!item.private && item.ownerId === this.user?.id)
+          this.kickRecords = this.kickRecords.filter(
+            record => record.channelId !== item.id || record.userId !== target.id
+          );
         if (!item.invitedUserIds.includes(target.id))
           item.invitedUserIds.push(target.id);
-        if (!item.members.some(person => person.id === target.id))
-          item.members.push(target);
         this.invitations.push(`${target.nickName}:${item.id}`);
       }
     },
     revoke(nick: string) {
       const item = this.selectedChannel;
-      const target = item?.members.find(person => person.nickName === nick);
+      const target = item?.members.find(person => person.nickName === nick) ??
+        people.find(person => person.nickName === nick);
       const allowed =
         !!item &&
-        (item.private
-          ? item.ownerId === this.user?.id
-          : item.members.some(person => person.id === this.user?.id));
-      if (allowed && item && target) {
+        item.private &&
+        item.ownerId === this.user?.id;
+      if (allowed && item && target && target.id !== this.user?.id) {
         item.invitedUserIds = item.invitedUserIds.filter(
           id => id !== target.id
         );
         item.members = item.members.filter(person => person.id !== target.id);
       }
+    },
+    declineInvitation(id: string) {
+      const item = this.channels.find(channel => channel.id === id);
+      if (item && this.user)
+        item.invitedUserIds = item.invitedUserIds.filter(userId => userId !== this.user?.id);
     },
     kick(nick: string) {
       const item = this.selectedChannel;
@@ -314,7 +387,9 @@ export const useChatStore = defineStore("chat", {
         !!item &&
         !!target &&
         !!actor &&
-        (item.private ? item.ownerId === actor.id : Boolean(isMember));
+        !item.private &&
+        target.id !== actor.id &&
+        Boolean(isMember);
       if (allowed && item && target && actor) {
         const previousActors = new Set(
           this.kickRecords
@@ -327,15 +402,13 @@ export const useChatStore = defineStore("chat", {
         previousActors.add(actor.id);
         const permanent = item.ownerId === actor.id || previousActors.size >= 3;
         item.members = item.members.filter(person => person.id !== target.id);
+        item.invitedUserIds = item.invitedUserIds.filter(id => id !== target.id);
         this.kickRecords.push({
           userId: target.id,
           channelId: item.id,
           kickedBy: actor.id,
           permanent,
-          createdAt: new Date().toISOString(),
-          expiresAt: permanent
-            ? null
-            : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+          createdAt: new Date().toISOString()
         });
       }
     },
@@ -344,6 +417,7 @@ export const useChatStore = defineStore("chat", {
         !this.notifications ||
         !this.user ||
         this.user.status !== "Online" ||
+        message.author === this.user.nickName ||
         (this.mentionOnly &&
           !message.mentions?.some(
             name => name.toLowerCase() === this.user?.nickName.toLowerCase()
@@ -366,7 +440,7 @@ export const useChatStore = defineStore("chat", {
       this.draft = draft;
       this.typing = Boolean(draft);
       this.typingState = draft
-        ? { nickName: "nikita", channelId: this.selectedChannelId, draft }
+        ? { nickName: this.user?.nickName ?? "", channelId: this.selectedChannelId, draft }
         : null;
     },
     setPresence(status: Presence) {

@@ -15,7 +15,7 @@ entity User {
 entity Channel {
   * id : UUID
   --
-  name : string
+  name : string <<unique>>
   visibility : public | private
   ownerId : UUID
   lastActivityAt : datetime
@@ -25,8 +25,8 @@ entity Message { * id : UUID channelId : UUID authorId : UUID body : string crea
 entity Mention { * messageId : UUID * userId : UUID }
 entity Notification { * id : UUID recipientId : UUID channelId : UUID messageId : UUID reason : message | mention read : boolean }
 entity TypingState { * userId : UUID * channelId : UUID draft : string startedAt : datetime }
-entity KickRecord { * userId : UUID * channelId : UUID kickedBy : UUID permanent : boolean createdAt : datetime expiresAt : datetime? }
-entity Invitation { * userId : UUID * channelId : UUID invitedAt : datetime revokedAt : datetime? }
+entity KickRecord { * userId : UUID * channelId : UUID kickedBy : UUID permanent : boolean createdAt : datetime }
+entity Invitation { * userId : UUID * channelId : UUID invitedBy : UUID invitedAt : datetime revokedAt : datetime? }
 
 User ||--o{ Membership
 Channel ||--o{ Membership
@@ -44,6 +44,7 @@ User ||--o{ Invitation
 Channel ||--o{ Invitation
 
 note "Public channels may be joined by anyone. Private channels require invitation." as N1
-note "KickRecord with permanent=true has expiresAt null; otherwise records expire after 30 days." as N2
-note "Notifications respect channel visibility, Online presence, DND/Offline suppression, and mention-only preference." as N3
+note "A channel is removed after 30 days without a new message; its name becomes available again." as N2
+note "Three distinct members can permanently ban a public-channel member. An owner can ban or restore access directly." as N3
+note "Notifications require the app to be hidden and respect DND, Offline, and mention-only preferences." as N4
 @enduml
