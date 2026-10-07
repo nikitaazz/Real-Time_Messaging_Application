@@ -264,6 +264,28 @@ body {
   color: var(--ink);
 }
 
+.settings-card .q-banner {
+  background: var(--surface-muted) !important;
+  color: var(--ink) !important;
+  border: 1px solid var(--line);
+}
+
+.settings-card .q-banner__content {
+  color: var(--ink) !important;
+}
+
+.command-banner {
+  background: var(--surface-muted) !important;
+  color: var(--ink) !important;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.command-banner .q-banner__content,
+.command-banner .q-btn {
+  color: var(--ink) !important;
+}
+
 .settings-page {
   min-height: 100vh;
   color: var(--ink);
