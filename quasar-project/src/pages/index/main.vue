@@ -216,7 +216,7 @@
           >
           <q-item-section
             >{{ member.name
-            }}<q-item-label caption
+            }}<q-item-label caption class="member-status"
               ><span
                 :class="`status-dot status-${member.status.toLowerCase()}`"
               />

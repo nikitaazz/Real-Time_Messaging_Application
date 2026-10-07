@@ -31,7 +31,7 @@
         label="Message notifications when online"
       />
       <q-toggle v-model="store.mentionOnly" label="Only notify for mentions" />
-      <q-banner class="q-mt-lg bg-grey-2"
+      <q-banner class="settings-info-banner q-mt-lg"
         >Mock state is kept in Pinia for this prototype. Changes are immediately
         reflected in the chat.</q-banner
       >
