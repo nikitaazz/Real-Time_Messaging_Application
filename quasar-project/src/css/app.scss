@@ -101,7 +101,7 @@ body {
 
 .landing-page {
   min-height: 100vh;
-  background: radial-gradient(circle at 50% 0%, #f5d6b8 0, var(--page) 46%);
+  background: var(--page);
 }
 
 .landing-card {
@@ -195,6 +195,10 @@ body {
   border-bottom: 1px solid var(--line);
 }
 
+.mobile-back {
+  display: none;
+}
+
 .message-scroll {
   flex: 1;
   min-height: 0;
@@ -238,6 +242,25 @@ body {
   color: inherit !important;
 }
 
+.in-app-notification {
+  position: fixed;
+  z-index: 30;
+  top: 16px;
+  right: 16px;
+  width: min(420px, calc(100vw - 32px));
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--accent);
+  border-radius: 12px;
+  background: var(--surface) !important;
+  color: var(--ink) !important;
+  box-shadow: 0 12px 36px #0003;
+}
+
+.in-app-notification .q-banner__content,
+.in-app-notification .q-btn {
+  color: inherit !important;
+}
+
 .settings-info-banner {
   background: rgba(129, 224, 167, 0.14) !important;
   color: var(--ink) !important;
@@ -258,6 +281,16 @@ body {
 
 .settings-info-banner .q-banner__content {
   color: inherit !important;
+}
+
+.notification-permission {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.notification-permission strong {
+  color: var(--ink);
+  text-transform: capitalize;
 }
 
 .message-addressed .message-bubble {
@@ -362,16 +395,38 @@ body {
 @media (max-width: 640px) {
   .chat-shell {
     display: flex;
-    flex-direction: column;
+    height: 100dvh;
+    min-height: 0;
   }
   .channel-panel {
-    flex: none;
+    width: 100%;
+    height: 100dvh;
+    flex: 1 1 100%;
     border-right: 0;
-    border-bottom: 1px solid #e6e8ef;
   }
   .channel-list {
-    max-height: 170px;
+    flex: 1;
+    min-height: 0;
     overflow-y: auto;
+  }
+  .conversation {
+    display: none;
+    width: 100%;
+    height: 100dvh;
+  }
+  .chat-shell.mobile-conversation-open .channel-panel {
+    display: none;
+  }
+  .chat-shell.mobile-conversation-open .conversation {
+    display: flex;
+  }
+  .conversation-header {
+    gap: 8px;
+    padding: 12px 14px;
+  }
+  .mobile-back {
+    display: inline-flex;
+    flex: 0 0 auto;
   }
   .message-scroll {
     padding: 16px;

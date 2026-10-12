@@ -1,6 +1,12 @@
 <template>
   <q-page class="chat-page">
-    <div class="chat-shell" :class="{ 'members-open': membersOpen }">
+    <div
+      class="chat-shell"
+      :class="{
+        'members-open': membersOpen,
+        'mobile-conversation-open': isMobile && mobileConversationVisible
+      }"
+    >
       <aside class="channel-panel">
         <div class="row items-center justify-between q-mb-md">
           <div
@@ -42,7 +48,9 @@
             <q-item-section
               ><q-item-label>{{ channel.name }}</q-item-label
               ><q-item-label caption>{{
-                isInvited(channel) ? 'Invitation - select to join' : channel.description
+                isInvited(channel)
+                  ? "Invitation - select to join"
+                  : channel.description
               }}</q-item-label></q-item-section
             >
             <q-item-section side
@@ -51,13 +59,26 @@
                 round
                 dense
                 :icon="isInvited(channel) ? 'close' : 'more_vert'"
-                :aria-label="isInvited(channel) ? 'Decline invitation' : 'Channel actions'"
+                :aria-label="
+                  isInvited(channel) ? 'Decline invitation' : 'Channel actions'
+                "
                 @click.stop="
                   isInvited(channel)
                     ? store.declineInvitation(channel.id)
                     : channelMenu(channel.id)
                 "
             /></q-item-section>
+            <q-item-section
+              v-if="store.unreadCounts[channel.id]"
+              side
+              class="channel-unread"
+            >
+              <q-badge
+                color="primary"
+                :label="store.unreadCounts[channel.id]"
+                rounded
+              />
+            </q-item-section>
           </q-item>
         </q-list>
         <q-space />
@@ -94,19 +115,39 @@
 
       <section class="conversation">
         <header class="conversation-header row items-center justify-between">
+          <q-btn
+            flat
+            round
+            icon="arrow_back"
+            class="mobile-back"
+            aria-label="Back to conversations"
+            @click="mobileConversationVisible = false"
+          />
           <div
             ><div class="text-h6">{{
-              selectedChannel ? `# ${selectedChannel.name}` : "No channel selected"
+              selectedChannel
+                ? `# ${selectedChannel.name}`
+                : "No channel selected"
             }}</div
             ><div class="text-caption text-grey-6">{{
               selectedChannel?.description
             }}</div></div
           >
           <div class="row items-center q-gutter-xs">
-            <q-btn flat round icon="group" :disable="!selectedChannel" @click="membersOpen = !membersOpen"
+            <q-btn
+              flat
+              round
+              icon="group"
+              :disable="!selectedChannel"
+              @click="membersOpen = !membersOpen"
               ><q-tooltip>Members</q-tooltip></q-btn
             >
-            <q-btn flat round icon="logout" :disable="!selectedChannel" @click="leave"
+            <q-btn
+              flat
+              round
+              icon="logout"
+              :disable="!selectedChannel"
+              @click="leave"
               ><q-tooltip>{{
                 selectedChannel?.ownerId === store.user?.id
                   ? "Delete channel"
@@ -123,7 +164,7 @@
               label="Clear"
               @click="store.commandHint = ''" /></template
         ></q-banner>
-        <div class="message-scroll" @scroll="onScroll">
+        <div ref="messageScroll" class="message-scroll" @scroll="onScroll">
           <div v-if="loading" class="text-center text-caption text-grey q-pa-sm"
             >Loading older messages...</div
           >
@@ -176,7 +217,9 @@
             :placeholder="
               composer.startsWith('/')
                 ? '/join #channel or /list'
-                : selectedChannel ? 'Write a message...' : 'Use /join channelName to get started'
+                : selectedChannel
+                  ? 'Write a message...'
+                  : 'Use /join channelName to get started'
             "
             @keydown.enter.exact.prevent="send"
             @update:model-value="onDraft"
@@ -188,7 +231,10 @@
                 round
                 icon="send"
                 color="primary"
-                :disable="!composer.trim() || (!selectedChannel && !composer.trim().startsWith('/'))"
+                :disable="
+                  !composer.trim() ||
+                  (!selectedChannel && !composer.trim().startsWith('/'))
+                "
                 @click="send"
             /></template>
           </q-input>
@@ -200,12 +246,18 @@
 
       <aside v-if="membersOpen" class="member-panel">
         <div class="row items-center justify-between q-mb-md">
-          <div class="text-subtitle1 text-weight-bold">Members
+          <div class="text-subtitle1 text-weight-bold"
+            >Members
             <span class="text-caption text-grey-6">({{ members.length }})</span>
           </div>
           <q-btn
-            flat round dense icon="close" class="member-close"
-            aria-label="Close members" @click="membersOpen = false"
+            flat
+            round
+            dense
+            icon="close"
+            class="member-close"
+            aria-label="Close members"
+            @click="membersOpen = false"
           />
         </div>
         <q-item v-for="member in members" :key="member.id" class="q-px-none">
@@ -254,14 +306,19 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, nextTick, ref } from "vue";
 import { useQuasar } from "quasar";
-import { useChatStore, type Channel, type ChatMessage } from "@/stores/example-store";
+import {
+  useChatStore,
+  type Channel,
+  type ChatMessage
+} from "@/stores/example-store";
 import { useTheme } from "@/composables/useTheme";
 
 const store = useChatStore();
 const { isDark, toggleTheme } = useTheme();
 const $q = useQuasar();
+const isMobile = computed(() => $q.screen.width <= 640);
 const search = ref("");
 const composer = ref("");
 const channelDialog = ref(false);
@@ -269,14 +326,20 @@ const newChannel = ref("");
 const channelError = ref("");
 const privateChannel = ref(false);
 const membersOpen = ref($q.screen.width > 900);
+const mobileConversationVisible = ref(false);
 const loading = ref(false);
+const messageScroll = ref<HTMLElement | null>(null);
 const filteredChannels = computed(() =>
   store.channels
-    .filter(channel =>
-      (channel.members.some(person => person.id === store.user?.id) || isInvited(channel)) &&
-      channel.name.includes((search.value ?? "").toLowerCase())
+    .filter(
+      channel =>
+        (channel.members.some(person => person.id === store.user?.id) ||
+          isInvited(channel)) &&
+        channel.name.includes((search.value ?? "").toLowerCase())
     )
-    .sort((first, second) => Number(isInvited(second)) - Number(isInvited(first)))
+    .sort(
+      (first, second) => Number(isInvited(second)) - Number(isInvited(first))
+    )
 );
 const selectedChannel = computed(() => store.selectedChannel);
 const members = computed(() => store.onlineMembers);
@@ -285,12 +348,16 @@ const initials = computed(() =>
 );
 
 function isInvited(channel: Channel) {
-  return channel.invitedUserIds.includes(store.user?.id ?? "") &&
-    !channel.members.some(person => person.id === store.user?.id);
+  return (
+    channel.invitedUserIds.includes(store.user?.id ?? "") &&
+    !channel.members.some(person => person.id === store.user?.id)
+  );
 }
 function openChannel(channel: Channel) {
   if (isInvited(channel)) store.runCommand(`/join ${channel.name}`);
   else store.selectChannel(channel.id);
+  if (store.selectedChannelId === channel.id)
+    mobileConversationVisible.value = true;
 }
 function send() {
   if (composer.value.trim().startsWith("/")) {
@@ -304,10 +371,18 @@ function send() {
 function onDraft(value: string | number | null) {
   store.setTyping(String(value ?? ""));
 }
-function loadHistory() {
+async function loadHistory() {
+  const scrollElement = messageScroll.value;
+  if (!scrollElement || loading.value || !selectedChannel.value) return;
+  const previousHeight = scrollElement.scrollHeight;
+  const previousTop = scrollElement.scrollTop;
   loading.value = true;
-  window.setTimeout(() => {
+  window.setTimeout(async () => {
     store.loadHistory();
+    await nextTick();
+    if (messageScroll.value)
+      messageScroll.value.scrollTop =
+        previousTop + messageScroll.value.scrollHeight - previousHeight;
     loading.value = false;
   }, 350);
 }
@@ -316,16 +391,26 @@ function onScroll(event: Event) {
     loadHistory();
 }
 function highlightMentions(body: string) {
-  return body
+  const escaped = body
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/@([a-z0-9_-]+)/gi, "<mark>@$1</mark>");
+    .replace(/>/g, "&gt;");
+  return escaped.replace(
+    /(^|[^a-z0-9._%+-])@([a-z0-9_-]+)(?![a-z0-9_.-])/gi,
+    (match, boundary: string, nickname: string) => {
+      const isMember = members.value.some(
+        member => member.nickName.toLowerCase() === nickname.toLowerCase()
+      );
+      return isMember ? `${boundary}<mark>@${nickname}</mark>` : match;
+    }
+  );
 }
 function isAddressedToMe(message: ChatMessage) {
-  return message.mentions?.some(
-    name => name.toLowerCase() === store.user?.nickName.toLowerCase()
-  ) ?? false;
+  return (
+    message.mentions?.some(
+      name => name.toLowerCase() === store.user?.nickName.toLowerCase()
+    ) ?? false
+  );
 }
 function createChannel() {
   if (!store.createChannel(newChannel.value, privateChannel.value)) {

@@ -16,13 +16,23 @@ export interface ChatMessage {
   time: string;
   mentions?: string[];
 }
-export interface Notification {
+export interface NotificationRecord {
   id: number;
   channelId: string;
   messageId: number;
   recipientId: string;
   reason: "message" | "mention";
   read: boolean;
+}
+export interface InAppNotification {
+  title: string;
+  body: string;
+  channelId: string;
+}
+export interface PendingMessage {
+  channelId: string;
+  author: string;
+  body: string;
 }
 export interface KickRecord {
   userId: string;
@@ -111,7 +121,10 @@ export const useChatStore = defineStore("chat", {
     } | null,
     notifications: true,
     mentionOnly: false,
-    notificationState: [] as Notification[],
+    notificationState: [] as NotificationRecord[],
+    lastNotificationStatus: "",
+    inAppNotification: null as InAppNotification | null,
+    pendingMessages: [] as PendingMessage[],
     unreadCounts: {} as Record<string, number>,
     invitations: [] as string[],
     topUp: 0,
@@ -129,7 +142,13 @@ export const useChatStore = defineStore("chat", {
   actions: {
     startSession(user: Member) {
       this.user = user;
-      const invited = channel("updates", "team-updates", true, [people[0]!], "n");
+      const invited = channel(
+        "updates",
+        "team-updates",
+        true,
+        [people[0]!],
+        "n"
+      );
       invited.invitedUserIds.push(user.id);
       this.channels = [
         channel("general", "general", false, [user, ...people], "n"),
@@ -143,6 +162,9 @@ export const useChatStore = defineStore("chat", {
       this.invitations = [];
       this.kickRecords = [];
       this.notificationState = [];
+      this.lastNotificationStatus = "";
+      this.inAppNotification = null;
+      this.pendingMessages = [];
       this.unreadCounts = {};
       this.notifications = true;
       this.mentionOnly = false;
@@ -207,16 +229,17 @@ export const useChatStore = defineStore("chat", {
         .replace(/^#/, "")
         .replace(/\s+/g, "-")
         .toLowerCase();
-      if (!this.user || !clean || this.channels.some(item => item.name === clean)) {
+      if (
+        !this.user ||
+        !clean ||
+        this.channels.some(item => item.name === clean)
+      ) {
         this.commandHint = "Choose a unique channel name.";
         return false;
       }
-      const created = channel(
-        `${clean}-${Date.now()}`,
-        clean,
-        isPrivate,
-        [this.user]
-      );
+      const created = channel(`${clean}-${Date.now()}`, clean, isPrivate, [
+        this.user
+      ]);
       created.ownerId = this.user.id;
       created.description = isPrivate
         ? "Private conversation"
@@ -228,16 +251,22 @@ export const useChatStore = defineStore("chat", {
     leaveChannel(id?: string) {
       const targetId = id ?? this.selectedChannelId;
       const item = this.channels.find(channel => channel.id === targetId);
-      if (!item || !this.user || !item.members.some(person => person.id === this.user?.id)) return;
+      if (
+        !item ||
+        !this.user ||
+        !item.members.some(person => person.id === this.user?.id)
+      )
+        return;
       if (item.ownerId === this.user.id) {
         this.deleteChannel(targetId);
         return;
       }
       item.members = item.members.filter(person => person.id !== this.user?.id);
       if (this.selectedChannelId === targetId)
-        this.selectedChannelId = this.channels.find(channel =>
-          channel.members.some(person => person.id === this.user?.id)
-        )?.id ?? "";
+        this.selectedChannelId =
+          this.channels.find(channel =>
+            channel.members.some(person => person.id === this.user?.id)
+          )?.id ?? "";
     },
     deleteChannel(id?: string) {
       const targetId = id ?? this.selectedChannelId;
@@ -245,9 +274,10 @@ export const useChatStore = defineStore("chat", {
       if (!item || item.ownerId !== this.user?.id) return;
       this.channels = this.channels.filter(channel => channel.id !== targetId);
       if (this.selectedChannelId === targetId)
-        this.selectedChannelId = this.channels.find(channel =>
-          channel.members.some(person => person.id === this.user?.id)
-        )?.id ?? "";
+        this.selectedChannelId =
+          this.channels.find(channel =>
+            channel.members.some(person => person.id === this.user?.id)
+          )?.id ?? "";
     },
     sendMessage(body: string) {
       const text = body.trim();
@@ -257,7 +287,8 @@ export const useChatStore = defineStore("chat", {
         !item ||
         !this.user ||
         !item.members.some(person => person.id === this.user?.id)
-      ) return;
+      )
+        return;
       const message: ChatMessage = {
         id: Date.now(),
         author: this.user?.nickName ?? "alex",
@@ -266,28 +297,77 @@ export const useChatStore = defineStore("chat", {
           hour: "2-digit",
           minute: "2-digit"
         }),
-        mentions:
-          text.match(/@[a-z0-9_-]+/gi)?.map(value => value.slice(1)) ?? []
+        mentions: this.extractMemberMentions(text, item)
       };
       item.messages.push(message);
       item.lastActivityAt = new Date().toISOString();
-      this.notifyMessage(item, message);
       this.draft = "";
       this.typing = false;
       this.typingState = null;
     },
+    receiveMessage(channelId: string, author: string, body: string) {
+      const item = this.channels.find(channel => channel.id === channelId);
+      if (
+        !item ||
+        !body.trim() ||
+        !this.user ||
+        !item.members.some(person => person.id === this.user?.id)
+      )
+        return;
+      if (this.user?.status === "Offline") {
+        this.pendingMessages.push({ channelId, author, body });
+        return;
+      }
+      const message: ChatMessage = {
+        id: Date.now(),
+        author,
+        body: body.trim(),
+        time: new Date().toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit"
+        }),
+        mentions: this.extractMemberMentions(body, item)
+      };
+      item.messages.push(message);
+      item.lastActivityAt = new Date().toISOString();
+      this.notifyMessage(item, message);
+      if (this.selectedChannelId !== item.id)
+        this.unreadCounts[item.id] = (this.unreadCounts[item.id] ?? 0) + 1;
+    },
     loadHistory() {
       const item = this.selectedChannel;
-      if (!item || !item.members.some(person => person.id === this.user?.id)) return;
-      const start = ++this.loadedHistory;
+      if (!item || !item.members.some(person => person.id === this.user?.id))
+        return;
+      const batch = this.loadedHistory++;
+      const firstMessageNumber = (batch + 1) * 3;
       item.messages.unshift(
-        ...Array.from({ length: 3 }, (_, index) => ({
-          id: -(start * 10 + index),
-          author: index % 2 ? "mira" : "nikita",
-          body: `Earlier message ${start * 3 + index + 1} from channel history.`,
-          time: "Yesterday"
-        }))
+        ...Array.from({ length: 3 }, (_, index) => {
+          const messageNumber = firstMessageNumber - index;
+          return {
+            id: -(batch * 3 + index + 1),
+            author: index % 2 ? "mira" : "nikita",
+            body: `Earlier message ${messageNumber} from channel history.`,
+            time: "Yesterday"
+          };
+        })
       );
+    },
+    extractMemberMentions(text: string, item: Channel) {
+      const mentions: string[] = [];
+      const mentionPattern =
+        /(^|[^a-z0-9._%+-])@([a-z0-9_-]+)(?![a-z0-9_.-])/gi;
+      for (const match of text.matchAll(mentionPattern)) {
+        const nickname = match[2];
+        if (
+          nickname &&
+          item.members.some(
+            person => person.nickName.toLowerCase() === nickname.toLowerCase()
+          ) &&
+          !mentions.some(name => name.toLowerCase() === nickname.toLowerCase())
+        )
+          mentions.push(nickname);
+      }
+      return mentions;
     },
     runCommand(input: string) {
       const [command, ...args] = input.trim().split(/\s+/);
@@ -295,13 +375,18 @@ export const useChatStore = defineStore("chat", {
       this.commandHint = "";
       if (command === "/join" && value) {
         const [name, visibility] = value.split(" ");
-        const item = this.channels.find(channel => channel.name === name?.toLowerCase());
+        const item = this.channels.find(
+          channel => channel.name === name?.toLowerCase()
+        );
         if (
           item &&
           (this.canAccess(item) ||
             (item.private &&
-              !this.kickRecords.some(record =>
-                record.channelId === item.id && record.userId === this.user?.id && record.permanent
+              !this.kickRecords.some(
+                record =>
+                  record.channelId === item.id &&
+                  record.userId === this.user?.id &&
+                  record.permanent
               ) &&
               item.invitedUserIds.includes(this.user?.id ?? "")))
         ) {
@@ -310,7 +395,9 @@ export const useChatStore = defineStore("chat", {
             !item.members.some(person => person.id === this.user?.id)
           )
             item.members.push(this.user);
-          item.invitedUserIds = item.invitedUserIds.filter(id => id !== this.user?.id);
+          item.invitedUserIds = item.invitedUserIds.filter(
+            id => id !== this.user?.id
+          );
           this.selectChannel(item.id);
         } else if (!item && name)
           this.createChannel(name, visibility === "private");
@@ -321,12 +408,16 @@ export const useChatStore = defineStore("chat", {
       else if (command === "/quit") {
         if (this.selectedChannel?.ownerId === this.user?.id)
           this.deleteChannel();
-        else this.commandHint = "Only the channel owner can close it. Use /cancel to leave.";
+        else
+          this.commandHint =
+            "Only the channel owner can close it. Use /cancel to leave.";
       } else if (command === "/cancel") {
         this.leaveChannel();
       } else if (command === "/list") {
         const item = this.selectedChannel;
-        this.commandHint = item?.members.some(person => person.id === this.user?.id)
+        this.commandHint = item?.members.some(
+          person => person.id === this.user?.id
+        )
           ? `Members of #${item.name}: ${item.members.map(person => person.nickName).join(", ")}`
           : "Join a channel to see its members.";
       } else this.commandHint = "Unknown command or missing channel name.";
@@ -342,16 +433,21 @@ export const useChatStore = defineStore("chat", {
         !!target &&
         (item.private ? item.ownerId === this.user?.id : Boolean(isMember));
       if (allowed && item && target) {
-        const banned = this.kickRecords.some(record =>
-          record.channelId === item.id && record.userId === target.id && record.permanent
+        const banned = this.kickRecords.some(
+          record =>
+            record.channelId === item.id &&
+            record.userId === target.id &&
+            record.permanent
         );
         if (banned && item.ownerId !== this.user?.id) {
-          this.commandHint = "Only the channel owner can restore a banned member.";
+          this.commandHint =
+            "Only the channel owner can restore a banned member.";
           return;
         }
         if (!item.private && item.ownerId === this.user?.id)
           this.kickRecords = this.kickRecords.filter(
-            record => record.channelId !== item.id || record.userId !== target.id
+            record =>
+              record.channelId !== item.id || record.userId !== target.id
           );
         if (!item.invitedUserIds.includes(target.id))
           item.invitedUserIds.push(target.id);
@@ -360,12 +456,10 @@ export const useChatStore = defineStore("chat", {
     },
     revoke(nick: string) {
       const item = this.selectedChannel;
-      const target = item?.members.find(person => person.nickName === nick) ??
+      const target =
+        item?.members.find(person => person.nickName === nick) ??
         people.find(person => person.nickName === nick);
-      const allowed =
-        !!item &&
-        item.private &&
-        item.ownerId === this.user?.id;
+      const allowed = !!item && item.private && item.ownerId === this.user?.id;
       if (allowed && item && target && target.id !== this.user?.id) {
         item.invitedUserIds = item.invitedUserIds.filter(
           id => id !== target.id
@@ -376,7 +470,9 @@ export const useChatStore = defineStore("chat", {
     declineInvitation(id: string) {
       const item = this.channels.find(channel => channel.id === id);
       if (item && this.user)
-        item.invitedUserIds = item.invitedUserIds.filter(userId => userId !== this.user?.id);
+        item.invitedUserIds = item.invitedUserIds.filter(
+          userId => userId !== this.user?.id
+        );
     },
     kick(nick: string) {
       const item = this.selectedChannel;
@@ -402,7 +498,9 @@ export const useChatStore = defineStore("chat", {
         previousActors.add(actor.id);
         const permanent = item.ownerId === actor.id || previousActors.size >= 3;
         item.members = item.members.filter(person => person.id !== target.id);
-        item.invitedUserIds = item.invitedUserIds.filter(id => id !== target.id);
+        item.invitedUserIds = item.invitedUserIds.filter(
+          id => id !== target.id
+        );
         this.kickRecords.push({
           userId: target.id,
           channelId: item.id,
@@ -413,38 +511,130 @@ export const useChatStore = defineStore("chat", {
       }
     },
     notifyMessage(item: Channel, message: ChatMessage) {
+      this.lastNotificationStatus = "";
       if (
-        !this.notifications ||
         !this.user ||
-        this.user.status !== "Online" ||
         message.author === this.user.nickName ||
-        (this.mentionOnly &&
-          !message.mentions?.some(
-            name => name.toLowerCase() === this.user?.nickName.toLowerCase()
-          )) ||
-        (item.private &&
-          !item.members.some(person => person.id === this.user?.id))
+        !item.members.some(person => person.id === this.user?.id)
       )
         return;
-      this.notificationState.push({
+      if (!this.notifications) {
+        this.lastNotificationStatus =
+          "Notifications are turned off in BeBe settings.";
+        return;
+      }
+      if (this.user.status !== "Online") {
+        this.lastNotificationStatus =
+          this.user.status === "DND"
+            ? "No notification: your status is DND."
+            : "No notification: your status is Offline.";
+        return;
+      }
+      if (
+        this.mentionOnly &&
+        !message.mentions?.some(
+          name => name.toLowerCase() === this.user?.nickName.toLowerCase()
+        )
+      ) {
+        this.lastNotificationStatus =
+          "No notification: this message did not mention your nickname.";
+        return;
+      }
+      const notificationRecord: NotificationRecord = {
         id: Date.now(),
         channelId: item.id,
         messageId: message.id,
         recipientId: this.user.id,
         reason: message.mentions?.length ? "mention" : "message",
         read: false
-      });
-      this.unreadCounts[item.id] = (this.unreadCounts[item.id] ?? 0) + 1;
+      };
+      this.notificationState.push(notificationRecord);
+      if (typeof document === "undefined") return;
+      if (document.visibilityState === "visible") {
+        this.inAppNotification = {
+          title: `#${item.name} · ${message.author}`,
+          body: message.body,
+          channelId: item.id
+        };
+        this.lastNotificationStatus = "Showing an in-app notification.";
+        return;
+      }
+      if (document.visibilityState !== "hidden") {
+        this.lastNotificationStatus =
+          "No notification: the app is not currently visible or hidden.";
+        return;
+      }
+      if (typeof Notification === "undefined") {
+        this.lastNotificationStatus =
+          "No notification: this browser does not support desktop notifications.";
+        return;
+      }
+      if (Notification.permission !== "granted") {
+        this.lastNotificationStatus = `No notification: browser permission is ${Notification.permission}.`;
+        return;
+      }
+      const title = `#${item.name}`;
+      const options: NotificationOptions = {
+        body: `${message.author}: ${message.body.slice(0, 120)}`,
+        tag: `bebe-${item.id}-${message.id}`,
+        data: { channelId: item.id }
+      };
+      if ("serviceWorker" in navigator && navigator.serviceWorker.controller) {
+        void navigator.serviceWorker.ready
+          .then(registration => registration.showNotification(title, options))
+          .then(() => {
+            this.lastNotificationStatus = "Browser notification was sent.";
+          })
+          .catch(error => {
+            this.lastNotificationStatus =
+              "The service worker failed to show the notification.";
+            console.error(
+              "BeBe could not display the browser notification.",
+              error
+            );
+          });
+        return;
+      }
+      try {
+        const notification = new Notification(title, options);
+        notification.onclick = () => {
+          window.focus();
+          this.selectChannel(item.id);
+          notification.close();
+        };
+        this.lastNotificationStatus = "Browser notification was sent.";
+      } catch (error) {
+        this.lastNotificationStatus =
+          "The browser rejected the notification request.";
+        console.error(
+          "BeBe could not display the browser notification.",
+          error
+        );
+      }
+    },
+    dismissInAppNotification() {
+      this.inAppNotification = null;
     },
     setTyping(draft: string) {
       this.draft = draft;
       this.typing = Boolean(draft);
       this.typingState = draft
-        ? { nickName: this.user?.nickName ?? "", channelId: this.selectedChannelId, draft }
+        ? {
+            nickName: this.user?.nickName ?? "",
+            channelId: this.selectedChannelId,
+            draft
+          }
         : null;
     },
     setPresence(status: Presence) {
-      if (this.user) this.user.status = status;
+      if (!this.user) return;
+      this.user.status = status;
+      if (status === "Online") {
+        const pending = this.pendingMessages.splice(0);
+        pending.forEach(message =>
+          this.receiveMessage(message.channelId, message.author, message.body)
+        );
+      }
     }
   }
 });
