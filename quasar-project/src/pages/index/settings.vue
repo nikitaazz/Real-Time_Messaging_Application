@@ -53,7 +53,9 @@
           outline
           label="Send test notification now"
           :disable="
-            notificationPermission !== 'granted' || !store.notifications
+            !store.notifications ||
+            store.user?.status !== 'Online' ||
+            !store.selectedChannel
           "
           @click="sendTestNotificationNow"
         />
@@ -92,10 +94,10 @@
         {{ store.lastNotificationStatus }}
       </div>
       <q-banner class="settings-info-banner q-mt-lg"
-        >Notifications are delivered only while BeBe is hidden. Allow browser
-        notifications, keep your status Online, and switch tabs after scheduling
-        the demo message. This prototype has no live messaging server, so the
-        demo message is used to verify notification delivery.</q-banner
+        >Incoming demo messages appear in chat and in BeBe's notification banner.
+        Desktop notifications are delivered only while BeBe is hidden. Allow
+        browser notifications, keep your status Online, and switch tabs after
+        scheduling the demo message.</q-banner
       >
       <q-btn
         color="negative"
@@ -117,12 +119,11 @@ import { useTheme } from "@/composables/useTheme";
 const router = useRouter();
 const store = useChatStore();
 const { isDark, toggleTheme } = useTheme();
-const testQueued = ref(false);
+const testQueued = computed(() => store.testMessageQueued);
 const notificationMessage = ref("");
 const notificationPermission = ref<NotificationPermission | "unsupported">(
   "unsupported"
 );
-let demoTimeout: number | undefined;
 const canRequestPermission = computed(
   () => notificationPermission.value === "default"
 );
@@ -161,68 +162,26 @@ async function requestNotificationPermission() {
     console.error("BeBe could not request notification permission.", error);
   }
 }
-async function sendTestNotificationNow() {
-  if (notificationPermission.value !== "granted") {
-    notificationMessage.value =
-      "Allow browser notifications before sending a test.";
-    return;
-  }
+function sendTestNotificationNow() {
   if (!store.notifications) {
     notificationMessage.value =
       "Turn on message notifications in BeBe settings first.";
     return;
   }
-  try {
-    const title = "BeBe notification test";
-    const options = {
-      body: "Your browser/device can display BeBe notifications.",
-      tag: `bebe-test-${Date.now()}`
-    };
-    const registration =
-      "serviceWorker" in navigator
-        ? await navigator.serviceWorker.getRegistration()
-        : undefined;
-    if (registration?.active) {
-      await registration.showNotification(title, options);
-    } else {
-      new window.Notification(title, options);
-    }
-    notificationMessage.value =
-      "Test notification sent. If it is not visible, check your operating system's notification settings or Do Not Disturb mode.";
-  } catch (error) {
-    notificationMessage.value =
-      "The browser could not display a notification. Check site permission, HTTPS/localhost, and device notification settings.";
-    console.error("BeBe test notification failed.", error);
-  }
+  const channel = store.selectedChannel;
+  if (!channel || !store.receiveTestMessage(channel.id)) return;
+  notificationMessage.value = `Demo message added to #${channel.name}. ${store.lastNotificationStatus}`;
 }
 function scheduleTestMessage() {
   const channel = store.selectedChannel;
-  if (!channel || !store.user) return;
-  testQueued.value = true;
+  if (!channel || !store.scheduleTestMessage()) return;
   notificationMessage.value =
     "Demo incoming message scheduled. It will be added to the channel in 5 seconds. To test a Windows notification, switch tabs before then.";
-  demoTimeout = window.setTimeout(() => {
-    store.receiveMessage(
-      channel.id,
-      "nikita",
-      store.mentionOnly
-        ? `@${store.user?.nickName} This is a BeBe notification test.`
-        : "This is a BeBe notification test."
-    );
-    testQueued.value = false;
-    notificationMessage.value = `Demo message added to #${channel.name}. ${store.lastNotificationStatus}`;
-  }, 5000);
 }
 function addTestMessageAndOpenChat() {
   const channel = store.selectedChannel;
   if (!channel || !store.user || store.user.status !== "Online") return;
-  store.receiveMessage(
-    channel.id,
-    "nikita",
-    store.mentionOnly
-      ? `@${store.user.nickName} This is a BeBe notification test.`
-      : "This is a BeBe notification test."
-  );
+  if (!store.receiveTestMessage(channel.id)) return;
   notificationMessage.value = `Demo message added to #${channel.name}. ${store.lastNotificationStatus}`;
   void router.push("/main");
 }
@@ -231,7 +190,6 @@ function logout() {
   void router.push("/login");
 }
 onBeforeUnmount(() => {
-  if (demoTimeout !== undefined) window.clearTimeout(demoTimeout);
   window.removeEventListener("focus", refreshNotificationPermission);
 });
 onMounted(() => {

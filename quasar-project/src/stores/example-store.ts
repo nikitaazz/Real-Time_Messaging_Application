@@ -124,6 +124,7 @@ export const useChatStore = defineStore("chat", {
     notificationState: [] as NotificationRecord[],
     lastNotificationStatus: "",
     inAppNotification: null as InAppNotification | null,
+    testMessageQueued: false,
     pendingMessages: [] as PendingMessage[],
     unreadCounts: {} as Record<string, number>,
     invitations: [] as string[],
@@ -164,6 +165,7 @@ export const useChatStore = defineStore("chat", {
       this.notificationState = [];
       this.lastNotificationStatus = "";
       this.inAppNotification = null;
+      this.testMessageQueued = false;
       this.pendingMessages = [];
       this.unreadCounts = {};
       this.notifications = true;
@@ -196,6 +198,8 @@ export const useChatStore = defineStore("chat", {
       this.typing = false;
       this.typingState = null;
       this.commandHint = "";
+      this.inAppNotification = null;
+      this.testMessageQueued = false;
     },
     canAccess(item: Channel) {
       const banned = this.kickRecords.some(
@@ -333,6 +337,35 @@ export const useChatStore = defineStore("chat", {
       this.notifyMessage(item, message);
       if (this.selectedChannelId !== item.id)
         this.unreadCounts[item.id] = (this.unreadCounts[item.id] ?? 0) + 1;
+    },
+    receiveTestMessage(channelId?: string) {
+      const targetId = channelId ?? this.selectedChannelId;
+      const item = this.channels.find(channel => channel.id === targetId);
+      if (
+        !item ||
+        !this.user ||
+        !item.members.some(person => person.id === this.user?.id)
+      )
+        return false;
+      const author = this.user.nickName === "nikita" ? "alex" : "nikita";
+      const body = this.mentionOnly
+        ? `@${this.user.nickName} This is a BeBe notification test.`
+        : "This is a BeBe notification test.";
+      this.receiveMessage(item.id, author, body);
+      return true;
+    },
+    scheduleTestMessage() {
+      const item = this.selectedChannel;
+      const recipient = this.user;
+      if (!item || !recipient || recipient.status !== "Online" || this.testMessageQueued)
+        return false;
+      this.testMessageQueued = true;
+      setTimeout(() => {
+        if (this.user !== recipient) return;
+        this.testMessageQueued = false;
+        this.receiveTestMessage(item.id);
+      }, 5000);
+      return true;
     },
     loadHistory() {
       const item = this.selectedChannel;
@@ -549,13 +582,13 @@ export const useChatStore = defineStore("chat", {
         read: false
       };
       this.notificationState.push(notificationRecord);
+      this.inAppNotification = {
+        title: `#${item.name} · ${message.author}`,
+        body: message.body,
+        channelId: item.id
+      };
       if (typeof document === "undefined") return;
       if (document.visibilityState === "visible") {
-        this.inAppNotification = {
-          title: `#${item.name} · ${message.author}`,
-          body: message.body,
-          channelId: item.id
-        };
         this.lastNotificationStatus = "Showing an in-app notification.";
         return;
       }
