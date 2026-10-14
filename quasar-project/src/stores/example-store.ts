@@ -457,35 +457,57 @@ export const useChatStore = defineStore("chat", {
     },
     invite(nick: string) {
       const item = this.selectedChannel;
-      const target = people.find(person => person.nickName === nick);
-      const isMember = item?.members.some(
-        person => person.id === this.user?.id
-      );
-      const allowed =
-        !!item &&
-        !!target &&
-        (item.private ? item.ownerId === this.user?.id : Boolean(isMember));
-      if (allowed && item && target) {
-        const banned = this.kickRecords.some(
-          record =>
-            record.channelId === item.id &&
-            record.userId === target.id &&
-            record.permanent
-        );
-        if (banned && item.ownerId !== this.user?.id) {
-          this.commandHint =
-            "Only the channel owner can restore a banned member.";
-          return;
-        }
-        if (!item.private && item.ownerId === this.user?.id)
-          this.kickRecords = this.kickRecords.filter(
-            record =>
-              record.channelId !== item.id || record.userId !== target.id
-          );
-        if (!item.invitedUserIds.includes(target.id))
-          item.invitedUserIds.push(target.id);
-        this.invitations.push(`${target.nickName}:${item.id}`);
+      const actor = this.user;
+      const nickname = nick.trim();
+      if (!nickname) {
+        this.commandHint = "Use /invite nickName.";
+        return;
       }
+      if (
+        !item ||
+        !actor ||
+        !item.members.some(person => person.id === actor.id)
+      ) {
+        this.commandHint = "Join a channel before inviting users.";
+        return;
+      }
+      if (item.private && item.ownerId !== actor.id) {
+        this.commandHint =
+          "Only the channel owner can invite users to a private channel.";
+        return;
+      }
+      const target =
+        people.find(person => person.nickName === nickname) ??
+        this.channels
+          .flatMap(channel => channel.members)
+          .find(person => person.nickName === nickname);
+      if (!target) {
+        this.commandHint = `No user found with nickname ${nickname}.`;
+        return;
+      }
+      const banned = this.kickRecords.some(
+        record =>
+          record.channelId === item.id &&
+          record.userId === target.id &&
+          record.permanent
+      );
+      if (banned && item.ownerId !== actor.id) {
+        this.commandHint =
+          "Only the channel owner can restore a banned member.";
+        return;
+      }
+      if (!item.private && item.ownerId === actor.id)
+        this.kickRecords = this.kickRecords.filter(
+          record => record.channelId !== item.id || record.userId !== target.id
+        );
+      if (item.members.some(person => person.id === target.id)) {
+        this.commandHint = `${target.nickName} is already a member of #${item.name}.`;
+        return;
+      }
+      item.members.push(target);
+      item.invitedUserIds = item.invitedUserIds.filter(id => id !== target.id);
+      this.invitations.push(`${target.nickName}:${item.id}`);
+      this.commandHint = `Invited ${target.nickName} to #${item.name}.`;
     },
     revoke(nick: string) {
       const item = this.selectedChannel;
