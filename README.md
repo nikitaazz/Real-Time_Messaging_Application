@@ -85,7 +85,7 @@ View all members of the current channel and check their online status. Easily se
 
 ![Settings interface](quasar-project/screenshots/settings_screen.png)
 
-## 🔵 Set Your Status
+🔵 Set Your Status
 Choose your current status to let other users know your availability:
 - **Online** — you are available.
 - **Away** — you are temporarily inactive.
