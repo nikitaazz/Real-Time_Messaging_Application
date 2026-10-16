@@ -57,21 +57,21 @@ pnpm exec quasar build
 
 ![Authentication interface](quasar-project/screenshots/login_screen.png)
 
-### 🔴 Theme switcher — the application supports multiple themes.
+🔴 Theme switcher — the application supports multiple themes.
 
-### 🟡 No account? Register by clicking the link.
+🟡 No account? Register by clicking the link.
 
-### 🟢 Fill in the form to log in to your account.
+🟢 Fill in the form to log in to your account.
 
 ![Main interface](quasar-project/screenshots/main_screen.png)
 
-### 🔴 Control Panel
+🔴 Control Panel
 Manage your channels in one place. Click the **+** button to create public or private channels. Join or leave channels and accept or reject invitations.
 
-### 🔵 Chat Window
+🔵 Chat Window
 View your message history and communicate with other channel members.
 
-### 🟡 Command Line
+🟡 Command Line
 Use commands to manage channels and members, or type a message to send it directly to the chat.
 
 **Available commands:**
@@ -80,19 +80,19 @@ Use commands to manage channels and members, or type a message to send it direct
 - `/revoke` — revoke a user's invitation.
 - `/kick` — remove a user from a channel.
 
-### 🟢 Channel Members
+🟢 Channel Members
 View all members of the current channel and check their online status. Easily see who is available to participate in the conversation.
 
 ![Settings interface](quasar-project/screenshots/settings_screen.png)
 
-### 🔵 Set Your Status
+## 🔵 Set Your Status
 Choose your current status to let other users know your availability:
 - **Online** — you are available.
 - **Away** — you are temporarily inactive.
 - **Do Not Disturb** — you prefer not to be disturbed.
 
-### 🟡 Enable Notifications
+🟡 Enable Notifications
 Enable notifications to stay informed about new messages and other chat activity.
 
-### 🔴 Test Notification
+🔴 Test Notification
 Send a test notification to check whether notifications are working correctly.
