@@ -55,7 +55,7 @@ pnpm exec quasar build
 
 ## How to Use
 
-![Authentication interface](screenshots/login_screen.png)
+![Authentication interface](quasar-project/screenshots/login_screen.png)
 
 ### 🔴 Theme switcher — the application supports multiple themes.
 
@@ -63,7 +63,7 @@ pnpm exec quasar build
 
 ### 🟢 Fill in the form to log in to your account.
 
-![Main interface](screenshots/main_screen.png)
+![Main interface](quasar-project/screenshots/main_screen.png)
 
 ### 🔴 Control Panel
 Manage your channels in one place. Click the **+** button to create public or private channels. Join or leave channels and accept or reject invitations.
@@ -83,7 +83,7 @@ Use commands to manage channels and members, or type a message to send it direct
 ### 🟢 Channel Members
 View all members of the current channel and check their online status. Easily see who is available to participate in the conversation.
 
-![Settings interface](screenshots/settings_screen.png)
+![Settings interface](quasar-project/screenshots/settings_screen.png)
 
 ### 🔵 Set Your Status
 Choose your current status to let other users know your availability:
