@@ -19,7 +19,7 @@
             icon="add"
             aria-label="Create channel"
             @click="channelDialog = true"
-          />
+          ><q-tooltip>Create channel</q-tooltip></q-btn>
         </div>
         <q-input
           v-model="search"
@@ -67,7 +67,7 @@
                     ? store.declineInvitation(channel.id)
                     : channelMenu(channel.id)
                 "
-            /></q-item-section>
+            ><q-tooltip>Leave channel</q-tooltip></q-btn></q-item-section>
             <q-item-section
               v-if="store.unreadCounts[channel.id]"
               side
