@@ -321,7 +321,7 @@ const $q = useQuasar();
 const isMobile = computed(() => $q.screen.width <= 640);
 const search = ref("");
 const composer = ref("");
-const channelDialog = ref(false);
+const channelDialog = ref(false); 
 const newChannel = ref("");
 const channelError = ref("");
 const privateChannel = ref(false);
