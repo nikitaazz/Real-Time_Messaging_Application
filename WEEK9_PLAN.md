@@ -19,7 +19,7 @@
 - `users`: first_name, last_name, nick_name (unique), email (unique), password, status (online/dnd/offline), mention_only
 - `auth_access_tokens`
 - `channels`: name (unique), is_private, owner_id, last_activity_at
-- `channel_users`: user_id, channel_id, role (owner/member), state (invited/joined/banned), invited_by, joined_at
+- `channel_users`: user_id, channel_id, state (invited/joined/banned), invited_by, joined_at. The admin is `channels.owner_id`, so there's no separate role column.
 - `kicks`: channel_id, target_id, kicked_by. Unused until UC4, but it belongs in the schema now.
 - `messages`: channel_id, author_id, body, created_at
 - `mentions`: message_id, user_id

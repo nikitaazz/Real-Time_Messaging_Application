@@ -1,0 +1,28 @@
+# Local development database for BeBe.
+# Start:  docker compose up -d     (from the backend/ folder)
+# Stop:   docker compose down      (data is kept in the "pgdata" volume)
+# Reset:  docker compose down -v   (deletes all data)
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: bebe-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: bebe
+      POSTGRES_PASSWORD: bebe
+      POSTGRES_DB: bebe
+    ports:
+      # 5433 on the host, so it doesn't clash with a locally installed PostgreSQL on 5432
+      - '5433:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Creates the extra "bebe_test" database on first start
+      - ./docker/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U bebe -d bebe']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:
