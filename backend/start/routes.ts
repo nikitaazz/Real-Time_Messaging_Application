@@ -17,21 +17,22 @@ router.get('/', () => {
 
 router
   .group(() => {
+    /**
+     * UC1: accounts. All responses are wrapped in { data: ... }.
+     */
     router
       .group(() => {
-        router.post('signup', [controllers.NewAccount, 'store'])
-        router.post('login', [controllers.AccessTokens, 'store'])
+        router.post('register', [controllers.NewAccount, 'store']).as('register')
+        router.post('login', [controllers.AccessTokens, 'store']).as('login')
+
+        router
+          .group(() => {
+            router.post('logout', [controllers.AccessTokens, 'destroy']).as('logout')
+            router.get('me', [controllers.Profile, 'show']).as('me')
+          })
+          .use(middleware.auth())
       })
       .prefix('auth')
       .as('auth')
-
-    router
-      .group(() => {
-        router.get('profile', [controllers.Profile, 'show'])
-        router.post('logout', [controllers.AccessTokens, 'destroy'])
-      })
-      .prefix('account')
-      .as('profile')
-      .use(middleware.auth())
   })
   .prefix('/api/v1')

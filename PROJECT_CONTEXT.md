@@ -134,7 +134,7 @@ pnpm run lint         # format + lint (fix)
 pnpm run lint:check   # format + lint (check only)
 pnpm run typecheck    # vue-tsc --noEmit
 pnpm exec quasar build
-node --test tests/    # channels + notifications tests
+node --test tests/*.test.mjs   # channels + notifications tests
 ```
 
 ### 2.2 Code layout

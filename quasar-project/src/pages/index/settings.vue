@@ -114,10 +114,12 @@
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { useChatStore, type Presence } from "@/stores/example-store";
+import { useAuthStore } from "@/stores/auth";
 import { useTheme } from "@/composables/useTheme";
 
 const router = useRouter();
 const store = useChatStore();
+const auth = useAuthStore();
 const { isDark, toggleTheme } = useTheme();
 const testQueued = computed(() => store.testMessageQueued);
 const notificationMessage = ref("");
@@ -185,8 +187,8 @@ function addTestMessageAndOpenChat() {
   notificationMessage.value = `Demo message added to #${channel.name}. ${store.lastNotificationStatus}`;
   void router.push("/main");
 }
-function logout() {
-  store.logout();
+async function logout() {
+  await auth.logout();
   void router.push("/login");
 }
 onBeforeUnmount(() => {

@@ -6,7 +6,13 @@ import {
   createWebHashHistory,
   createWebHistory
 } from "vue-router";
-import { useChatStore } from "@/stores/example-store";
+import { useAuthStore } from "@/stores/auth";
+import { setUnauthorizedHandler } from "@/services/api";
+
+/** Pages that require a logged-in user. */
+const protectedPages = ["/main", "/settings"];
+/** Pages that make no sense once logged in. */
+const guestPages = ["/login", "/registration"];
 
 /*
  * If not building with SSR mode, you can
@@ -34,9 +40,18 @@ export default defineRouter(({ store }) => {
     history: createHistory(import.meta.env.QUASAR_VUE_ROUTER_BASE)
   });
 
-  Router.beforeEach(to => {
-    if ((to.path === "/main" || to.path === "/settings") && !useChatStore(store).user)
-      return "/login";
+  Router.beforeEach(async to => {
+    const auth = useAuthStore(store);
+    // After a page reload, log back in with the saved token before deciding
+    await auth.restore();
+    if (protectedPages.includes(to.path) && !auth.isLoggedIn) return "/login";
+    if (guestPages.includes(to.path) && auth.isLoggedIn) return "/main";
+  });
+
+  // The server rejected the saved token (expired, or logged out elsewhere)
+  setUnauthorizedHandler(() => {
+    useAuthStore(store).clearSession();
+    void Router.push("/login");
   });
 
   // enable HMR for it
