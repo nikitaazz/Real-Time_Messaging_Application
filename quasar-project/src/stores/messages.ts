@@ -1,5 +1,11 @@
 import { acceptHMRUpdate, defineStore } from "pinia";
 import { api } from "@/services/api";
+import {
+  connectSocket,
+  disconnectSocket,
+  subscribeToChannel
+} from "@/services/socket";
+import { useChatStore } from "@/stores/example-store";
 
 /** A message as returned by the backend (MessageTransformer). */
 export interface ServerMessage {
@@ -71,7 +77,10 @@ export const useMessagesStore = defineStore("messages", {
   actions: {
     history(channelId: string | number) {
       const key = String(channelId);
-      return (this.histories[key] ??= emptyHistory());
+      if (!this.histories[key]) this.histories[key] = emptyHistory();
+      // Read it back through the store: that returns the reactive proxy, so changes
+      // re-render the message list. ("??=" would return the plain, unobserved object.)
+      return this.histories[key];
     },
 
     /** Fetches one page, newest first, older than the message with id "before". */
@@ -147,6 +156,47 @@ export const useMessagesStore = defineStore("messages", {
       );
       this.members[String(channelId)] = data;
       return data;
+    },
+
+    /** Starts live updates for the logged-in user. */
+    connect(token: string) {
+      connectSocket(token, {
+        "message:new": message => this.receive(message)
+      });
+    },
+
+    disconnect() {
+      disconnectSocket();
+    },
+
+    /** Makes sure live messages of a channel arrive, e.g. one joined after logging in. */
+    subscribe(channelId: string | number) {
+      subscribeToChannel(Number(channelId));
+    },
+
+    /**
+     * A message pushed by the server (another member, or this user in another tab).
+     * Counts it as unread and notifies (UC8) unless it is the user's own message.
+     */
+    receive(message: ServerMessage) {
+      const history = this.histories[String(message.channelId)];
+      if (history?.messages.some(item => item.id === message.id)) return;
+      this.add(message);
+
+      const chat = useChatStore();
+      const channelId = String(message.channelId);
+      if (message.author === chat.user?.nickName) return;
+      if (chat.selectedChannelId !== channelId)
+        chat.unreadCounts[channelId] = (chat.unreadCounts[channelId] ?? 0) + 1;
+      const channel = chat.channels.find(item => item.id === channelId);
+      if (channel)
+        chat.notifyMessage(channel, {
+          id: message.id,
+          author: message.author,
+          body: message.body,
+          time: "",
+          mentions: message.mentions
+        });
     },
 
     /** Forgets a channel, e.g. after leaving it. */

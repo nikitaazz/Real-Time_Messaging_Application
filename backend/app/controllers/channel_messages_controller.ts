@@ -5,6 +5,7 @@ import Message from '#models/message'
 import MessageTransformer from '#transformers/message_transformer'
 import { findJoinedChannel } from '#services/channel_access'
 import { findMentionedMembers } from '#services/mentions'
+import ws from '#services/ws'
 import {
   createMessageValidator,
   DEFAULT_PAGE_SIZE,
@@ -74,7 +75,11 @@ export default class ChannelMessagesController {
     await message.load('author')
     await message.load('mentionedUsers')
 
+    const payload = await serialize(MessageTransformer.transform(message))
+    // Live delivery to the members who are online, including the author's other tabs
+    ws.toChannel(channel.id, 'message:new', payload.data)
+
     response.status(201)
-    return serialize(MessageTransformer.transform(message))
+    return payload
   }
 }

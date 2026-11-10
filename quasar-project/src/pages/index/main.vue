@@ -443,6 +443,7 @@ watch(
   serverChannelId,
   async channelId => {
     if (!channelId) return;
+    messages.subscribe(channelId);
     try {
       await Promise.all([
         messages.loadLatest(channelId),
@@ -455,6 +456,23 @@ watch(
     }
   },
   { immediate: true }
+);
+
+// A new message at the end (sent or received live) scrolls down, unless the
+// user has scrolled up to read older messages
+watch(
+  () => visibleMessages.value.at(-1)?.id,
+  async () => {
+    const scrollElement = messageScroll.value;
+    if (!scrollElement) return;
+    const nearBottom =
+      scrollElement.scrollHeight -
+        scrollElement.scrollTop -
+        scrollElement.clientHeight <
+      150;
+    await nextTick();
+    if (nearBottom) scrollToBottom();
+  }
 );
 
 /** UC10: /list shows the members of the current channel with their status. */
