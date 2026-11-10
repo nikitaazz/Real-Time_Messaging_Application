@@ -1,0 +1,19 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "backend",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["ace", "serve", "--hmr"],
+      "cwd": "backend",
+      "port": 3333
+    },
+    {
+      "name": "frontend",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["quasar", "dev", "--port", "9000"],
+      "cwd": "quasar-project",
+      "port": 9000
+    }
+  ]
+}
