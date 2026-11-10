@@ -1,5 +1,6 @@
 import { acceptHMRUpdate, defineStore } from "pinia";
 import { api, getToken, setToken } from "@/services/api";
+import { useMessagesStore } from "@/stores/messages";
 import {
   useChatStore,
   type Member,
@@ -116,6 +117,7 @@ export const useAuthStore = defineStore("auth", {
       setToken(null);
       this.user = null;
       useChatStore().logout();
+      useMessagesStore().$reset();
     }
   }
 });

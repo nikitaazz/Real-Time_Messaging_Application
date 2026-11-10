@@ -19,7 +19,8 @@
             icon="add"
             aria-label="Create channel"
             @click="channelDialog = true"
-          ><q-tooltip>Create channel</q-tooltip></q-btn>
+            ><q-tooltip>Create channel</q-tooltip></q-btn
+          >
         </div>
         <q-input
           v-model="search"
@@ -67,7 +68,9 @@
                     ? store.declineInvitation(channel.id)
                     : channelMenu(channel.id)
                 "
-            ><q-tooltip>Leave channel</q-tooltip></q-btn></q-item-section>
+                ><q-tooltip>Leave channel</q-tooltip></q-btn
+              ></q-item-section
+            >
             <q-item-section
               v-if="store.unreadCounts[channel.id]"
               side
@@ -169,7 +172,7 @@
             >Loading older messages...</div
           >
           <q-btn
-            v-else
+            v-else-if="canLoadMore"
             flat
             color="primary"
             label="Load earlier messages"
@@ -177,11 +180,16 @@
             :disable="!selectedChannel"
             @click="loadHistory"
           />
+          <div
+            v-else-if="selectedChannel"
+            class="text-center text-caption text-grey-6 q-pa-sm"
+            >This is the beginning of #{{ selectedChannel.name }}</div
+          >
           <div v-if="!selectedChannel" class="text-center text-grey-7 q-pa-lg">
             Join or create a channel to start chatting.
           </div>
           <div
-            v-for="message in selectedChannel?.messages ?? []"
+            v-for="message in visibleMessages"
             :key="message.id"
             class="message-row"
             :class="{ 'message-addressed': isAddressedToMe(message) }"
@@ -198,7 +206,7 @@
               >
               <div
                 class="message-bubble"
-                v-html="highlightMentions(message.body)"
+                v-html="highlightMentions(message)"
               ></div>
             </div>
           </div>
@@ -306,16 +314,26 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
 import { useQuasar } from "quasar";
 import {
   useChatStore,
   type Channel,
-  type ChatMessage
+  type ChatMessage,
+  type Member,
+  type Presence
 } from "@/stores/example-store";
+import {
+  isServerChannel,
+  useMessagesStore,
+  type ChannelMember,
+  type ServerMessage
+} from "@/stores/messages";
+import { ApiError } from "@/services/api";
 import { useTheme } from "@/composables/useTheme";
 
 const store = useChatStore();
+const messages = useMessagesStore();
 const { isDark, toggleTheme } = useTheme();
 const $q = useQuasar();
 const isMobile = computed(() => $q.screen.width <= 640);
@@ -342,7 +360,25 @@ const filteredChannels = computed(() =>
     )
 );
 const selectedChannel = computed(() => store.selectedChannel);
-const members = computed(() => store.onlineMembers);
+/** Id of the selected channel when it comes from the backend, otherwise null (mock channel). */
+const serverChannelId = computed(() =>
+  isServerChannel(selectedChannel.value?.id)
+    ? (selectedChannel.value?.id ?? null)
+    : null
+);
+const visibleMessages = computed<ChatMessage[]>(() =>
+  serverChannelId.value
+    ? messages.messagesFor(serverChannelId.value).map(toChatMessage)
+    : (selectedChannel.value?.messages ?? [])
+);
+const canLoadMore = computed(() =>
+  serverChannelId.value ? messages.hasMoreFor(serverChannelId.value) : true
+);
+const members = computed<Member[]>(() =>
+  serverChannelId.value
+    ? messages.membersFor(serverChannelId.value).map(toMember)
+    : store.onlineMembers
+);
 const initials = computed(() =>
   (store.user?.name ?? "G").slice(0, 1).toUpperCase()
 );
@@ -359,48 +395,162 @@ function openChannel(channel: Channel) {
   if (store.selectedChannelId === channel.id)
     mobileConversationVisible.value = true;
 }
-function send() {
-  if (composer.value.trim().startsWith("/")) {
-    store.runCommand(composer.value);
-    if (composer.value.trim() === "/list" && selectedChannel.value)
-      membersOpen.value = true;
-  } else store.sendMessage(composer.value);
+const presenceLabel: Record<ChannelMember["status"], Presence> = {
+  online: "Online",
+  dnd: "DND",
+  offline: "Offline"
+};
+function toMember(member: ChannelMember): Member {
+  return {
+    id: String(member.id),
+    name: member.nickName,
+    firstName: member.firstName,
+    lastName: member.lastName,
+    nickName: member.nickName,
+    status: presenceLabel[member.status]
+  };
+}
+function formatTime(iso: string) {
+  const date = new Date(iso);
+  const time = date.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+  return date.toDateString() === new Date().toDateString()
+    ? time
+    : `${date.toLocaleDateString()} ${time}`;
+}
+function toChatMessage(message: ServerMessage): ChatMessage {
+  return {
+    id: message.id,
+    author: message.author,
+    body: message.body,
+    time: formatTime(message.createdAt),
+    mentions: message.mentions
+  };
+}
+function showError(error: unknown) {
+  store.commandHint =
+    error instanceof ApiError ? error.message : "Something went wrong.";
+}
+function scrollToBottom() {
+  const scrollElement = messageScroll.value;
+  if (scrollElement) scrollElement.scrollTop = scrollElement.scrollHeight;
+}
+
+// Opening a backend channel loads its newest messages (UC7) and members (UC10)
+watch(
+  serverChannelId,
+  async channelId => {
+    if (!channelId) return;
+    try {
+      await Promise.all([
+        messages.loadLatest(channelId),
+        messages.loadMembers(channelId)
+      ]);
+      await nextTick();
+      scrollToBottom();
+    } catch (error) {
+      showError(error);
+    }
+  },
+  { immediate: true }
+);
+
+/** UC10: /list shows the members of the current channel with their status. */
+async function listMembers(channelId: string) {
+  try {
+    const list = await messages.loadMembers(channelId);
+    store.commandHint = `Members of #${selectedChannel.value?.name}: ${list
+      .map(member => `${member.nickName} (${presenceLabel[member.status]})`)
+      .join(", ")}`;
+    membersOpen.value = true;
+  } catch (error) {
+    showError(error);
+  }
+}
+async function send() {
+  const text = composer.value.trim();
+  if (!text) return;
   composer.value = "";
   store.setTyping("");
+  if (text.startsWith("/")) {
+    if (text === "/list" && serverChannelId.value) {
+      await listMembers(serverChannelId.value);
+      return;
+    }
+    store.runCommand(text);
+    if (text === "/list" && selectedChannel.value) membersOpen.value = true;
+    return;
+  }
+  if (!serverChannelId.value) {
+    store.sendMessage(text);
+    return;
+  }
+  // UC3: send to the backend; on failure keep the text so it isn't lost
+  try {
+    await messages.send(serverChannelId.value, text);
+    await nextTick();
+    scrollToBottom();
+  } catch (error) {
+    composer.value = text;
+    showError(error);
+  }
 }
 function onDraft(value: string | number | null) {
   store.setTyping(String(value ?? ""));
 }
+/** UC7: loads older messages and keeps the messages on screen in place. */
 async function loadHistory() {
   const scrollElement = messageScroll.value;
-  if (!scrollElement || loading.value || !selectedChannel.value) return;
+  if (
+    !scrollElement ||
+    loading.value ||
+    !selectedChannel.value ||
+    !canLoadMore.value
+  )
+    return;
   const previousHeight = scrollElement.scrollHeight;
   const previousTop = scrollElement.scrollTop;
   loading.value = true;
-  window.setTimeout(async () => {
-    store.loadHistory();
+  try {
+    if (serverChannelId.value) await messages.loadOlder(serverChannelId.value);
+    else {
+      // Mock channels: simulate network delay
+      await new Promise(resolve => window.setTimeout(resolve, 350));
+      store.loadHistory();
+    }
     await nextTick();
     if (messageScroll.value)
       messageScroll.value.scrollTop =
         previousTop + messageScroll.value.scrollHeight - previousHeight;
+  } catch (error) {
+    showError(error);
+  } finally {
     loading.value = false;
-  }, 350);
+  }
 }
 function onScroll(event: Event) {
   if ((event.target as HTMLElement).scrollTop < 20 && !loading.value)
     loadHistory();
 }
-function highlightMentions(body: string) {
-  const escaped = body
+/** UC6: marks @nickname of a mentioned user (server data) or a channel member. */
+function highlightMentions(message: ChatMessage) {
+  const mentioned = new Set(
+    (message.mentions ?? []).map(name => name.toLowerCase())
+  );
+  const escaped = message.body
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
   return escaped.replace(
     /(^|[^a-z0-9._%+-])@([a-z0-9_-]+)(?![a-z0-9_.-])/gi,
     (match, boundary: string, nickname: string) => {
-      const isMember = members.value.some(
-        member => member.nickName.toLowerCase() === nickname.toLowerCase()
-      );
+      const isMember =
+        mentioned.has(nickname.toLowerCase()) ||
+        members.value.some(
+          member => member.nickName.toLowerCase() === nickname.toLowerCase()
+        );
       return isMember ? `${boundary}<mark>@${nickname}</mark>` : match;
     }
   );

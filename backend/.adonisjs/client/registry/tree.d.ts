@@ -8,4 +8,13 @@ export interface ApiDefinition {
     logout: typeof routes['auth.logout']
     me: typeof routes['auth.me']
   }
+  channels: {
+    messages: {
+      index: typeof routes['channels.messages.index']
+      store: typeof routes['channels.messages.store']
+    }
+    members: {
+      index: typeof routes['channels.members.index']
+    }
+  }
 }

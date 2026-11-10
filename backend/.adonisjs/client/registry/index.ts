@@ -32,6 +32,24 @@ const routes = {
     tokens: [[0,"api"],[0,"v1"],[0,"auth"],[0,"me"]],
     types: placeholder as Registry['auth.me']['types'],
   },
+  'channels.messages.index': {
+    methods: ["GET","HEAD"],
+    pattern: '/api/v1/channels/:id/messages',
+    tokens: [[0,"api"],[0,"v1"],[0,"channels"],[1,"id"],[0,"messages"]],
+    types: placeholder as Registry['channels.messages.index']['types'],
+  },
+  'channels.messages.store': {
+    methods: ["POST"],
+    pattern: '/api/v1/channels/:id/messages',
+    tokens: [[0,"api"],[0,"v1"],[0,"channels"],[1,"id"],[0,"messages"]],
+    types: placeholder as Registry['channels.messages.store']['types'],
+  },
+  'channels.members.index': {
+    methods: ["GET","HEAD"],
+    pattern: '/api/v1/channels/:id/members',
+    tokens: [[0,"api"],[0,"v1"],[0,"channels"],[1,"id"],[0,"members"]],
+    types: placeholder as Registry['channels.members.index']['types'],
+  },
 } as const satisfies Record<string, AdonisEndpoint>
 
 export { routes }
