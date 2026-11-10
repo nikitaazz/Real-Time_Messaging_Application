@@ -1,10 +1,7 @@
 import { acceptHMRUpdate, defineStore } from "pinia";
 import { api } from "@/services/api";
-import {
-  connectSocket,
-  disconnectSocket,
-  subscribeToChannel
-} from "@/services/socket";
+import { subscribeToChannel } from "@/services/socket";
+import { useAuthStore } from "@/stores/auth";
 import { useChatStore } from "@/stores/example-store";
 
 /** A message as returned by the backend (MessageTransformer). */
@@ -30,11 +27,12 @@ export interface ChannelMember {
 }
 
 interface ChannelHistory {
-  /** Oldest first, the order the message list shows them in. */
+  /** Sorted by id, oldest first: the order the message list shows them in. */
   messages: ServerMessage[];
   /** False once a page came back shorter than PAGE_SIZE: there is nothing older. */
   hasMore: boolean;
   loading: boolean;
+  /** The newest page has been fetched (the channel was opened at least once). */
   loaded: boolean;
 }
 
@@ -60,6 +58,10 @@ const emptyHistory = (): ChannelHistory => ({
 /**
  * UC3 sending, UC6 mentions, UC7 history and UC10 members, backed by the API.
  * State is kept per channel, so switching back to a channel doesn't refetch it.
+ *
+ * Messages arrive in three ways: pages of history (REST), the answer to our
+ * own POST, and live pushes over the WebSocket. All of them go through add(),
+ * which keeps every channel's list sorted and free of duplicates.
  */
 export const useMessagesStore = defineStore("messages", {
   state: () => ({
@@ -83,6 +85,19 @@ export const useMessagesStore = defineStore("messages", {
       return this.histories[key];
     },
 
+    /**
+     * Puts a message into its channel's list, at its place by id (normally the end).
+     * Returns false when the message was already there.
+     */
+    add(message: ServerMessage) {
+      const list = this.history(message.channelId).messages;
+      let index = list.length;
+      while (index > 0 && list[index - 1]!.id > message.id) index--;
+      if (index > 0 && list[index - 1]!.id === message.id) return false;
+      list.splice(index, 0, message);
+      return true;
+    },
+
     /** Fetches one page, newest first, older than the message with id "before". */
     fetchPage(channelId: string | number, before?: number) {
       const query = new URLSearchParams({ limit: String(PAGE_SIZE) });
@@ -92,6 +107,18 @@ export const useMessagesStore = defineStore("messages", {
       );
     },
 
+    /**
+     * Called when the user opens a channel: asks for its live events and loads
+     * the newest messages (UC7) and the members with their status (UC10).
+     */
+    async open(channelId: string | number) {
+      subscribeToChannel(Number(channelId));
+      await Promise.all([
+        this.loadLatest(channelId),
+        this.loadMembers(channelId)
+      ]);
+    },
+
     /** Loads the newest page the first time a channel is opened. */
     async loadLatest(channelId: string | number) {
       const history = this.history(channelId);
@@ -99,12 +126,9 @@ export const useMessagesStore = defineStore("messages", {
       history.loading = true;
       try {
         const { data } = await this.fetchPage(channelId);
-        // A message sent while this request was running is already in the list
-        const known = new Set(history.messages.map(message => message.id));
-        history.messages = [
-          ...data.reverse().filter(message => !known.has(message.id)),
-          ...history.messages
-        ];
+        // Oldest first. A message pushed live while this request was running is
+        // already in the list; add() skips it.
+        for (const message of data.reverse()) this.add(message);
         history.hasMore = data.length === PAGE_SIZE;
         history.loaded = true;
       } finally {
@@ -124,6 +148,7 @@ export const useMessagesStore = defineStore("messages", {
       history.loading = true;
       try {
         const { data } = await this.fetchPage(channelId, oldest.id);
+        // The page is newest first and everything in it is older than what is shown
         history.messages.unshift(...data.reverse());
         history.hasMore = data.length === PAGE_SIZE;
         return data.length;
@@ -142,13 +167,6 @@ export const useMessagesStore = defineStore("messages", {
       return data;
     },
 
-    /** Adds a message to the end of its channel, unless it is already there. */
-    add(message: ServerMessage) {
-      const history = this.history(message.channelId);
-      if (!history.messages.some(item => item.id === message.id))
-        history.messages.push(message);
-    },
-
     /** UC10: members of a channel with their status. */
     async loadMembers(channelId: string | number) {
       const { data } = await api<{ data: ChannelMember[] }>(
@@ -158,36 +176,20 @@ export const useMessagesStore = defineStore("messages", {
       return data;
     },
 
-    /** Starts live updates for the logged-in user. */
-    connect(token: string) {
-      connectSocket(token, {
-        "message:new": message => this.receive(message)
-      });
-    },
-
-    disconnect() {
-      disconnectSocket();
-    },
-
-    /** Makes sure live messages of a channel arrive, e.g. one joined after logging in. */
-    subscribe(channelId: string | number) {
-      subscribeToChannel(Number(channelId));
-    },
-
     /**
-     * A message pushed by the server (another member, or this user in another tab).
-     * Counts it as unread and notifies (UC8) unless it is the user's own message.
+     * A message pushed by the server over the WebSocket: from another member,
+     * or from this user in another tab. Messages from others count as unread
+     * and may raise a notification (UC8).
      */
     receive(message: ServerMessage) {
-      const history = this.histories[String(message.channelId)];
-      if (history?.messages.some(item => item.id === message.id)) return;
-      this.add(message);
+      // False for our own message when the answer to the POST came first
+      if (!this.add(message)) return;
+      if (message.authorId === useAuthStore().user?.id) return;
+
+      const channelId = String(message.channelId);
+      this.markUnread(channelId, 1);
 
       const chat = useChatStore();
-      const channelId = String(message.channelId);
-      if (message.author === chat.user?.nickName) return;
-      if (chat.selectedChannelId !== channelId)
-        chat.unreadCounts[channelId] = (chat.unreadCounts[channelId] ?? 0) + 1;
       const channel = chat.channels.find(item => item.id === channelId);
       if (channel)
         chat.notifyMessage(channel, {
@@ -197,6 +199,61 @@ export const useMessagesStore = defineStore("messages", {
           time: "",
           mentions: message.mentions
         });
+    },
+
+    /**
+     * Called every time the live connection is (re)established. Messages posted
+     * while it was down were not pushed to us, so the channels that are already
+     * loaded are brought up to date. Never rejects: a channel that fails is
+     * retried on the next reconnect.
+     */
+    async resync() {
+      const loaded = Object.keys(this.histories).filter(
+        channelId => this.histories[channelId]?.loaded
+      );
+      await Promise.allSettled(
+        loaded.map(channelId => this.catchUp(channelId))
+      );
+    },
+
+    /** Fetches the newest page of a channel and adds the messages we don't have yet. */
+    async catchUp(channelId: string) {
+      const { data } = await this.fetchPage(channelId);
+      const page = data.reverse(); // oldest first
+      const history = this.history(channelId);
+      const newestKnown = history.messages.at(-1);
+      const oldestFetched = page[0];
+      const userId = useAuthStore().user?.id;
+      let missed: ServerMessage[];
+
+      if (
+        newestKnown &&
+        oldestFetched &&
+        oldestFetched.id > newestKnown.id &&
+        page.length === PAGE_SIZE
+      ) {
+        // A full page of messages we have never seen: more may be missing between
+        // it and what we have. Start again from this page instead of showing a
+        // list with a hole in it; scrolling up loads the rest (UC7).
+        history.messages = page;
+        history.hasMore = true;
+        missed = page;
+      } else {
+        missed = page.filter(message => this.add(message));
+      }
+
+      this.markUnread(
+        channelId,
+        missed.filter(message => message.authorId !== userId).length
+      );
+    },
+
+    /** Adds to the unread counter of a channel, unless it is the one being read. */
+    markUnread(channelId: string, count: number) {
+      const chat = useChatStore();
+      if (count === 0 || chat.selectedChannelId === channelId) return;
+      chat.unreadCounts[channelId] =
+        (chat.unreadCounts[channelId] ?? 0) + count;
     },
 
     /** Forgets a channel, e.g. after leaving it. */

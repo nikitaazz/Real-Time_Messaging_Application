@@ -1,6 +1,5 @@
 import { acceptHMRUpdate, defineStore } from "pinia";
 import { api, getToken, setToken } from "@/services/api";
-import { useMessagesStore } from "@/stores/messages";
 import {
   useChatStore,
   type Member,
@@ -103,7 +102,6 @@ export const useAuthStore = defineStore("auth", {
         const { data } = await api<{ data: AuthUser }>("/auth/me");
         this.user = data;
         startChatSession(data);
-        useMessagesStore().connect(getToken()!);
       } catch {
         // Invalid token: api() already removed it. Server offline: the user logs in again.
       }
@@ -113,15 +111,11 @@ export const useAuthStore = defineStore("auth", {
       this.user = user;
       this.restored = true;
       startChatSession(user);
-      useMessagesStore().connect(token);
     },
     clearSession() {
       setToken(null);
       this.user = null;
       useChatStore().logout();
-      const messages = useMessagesStore();
-      messages.disconnect();
-      messages.$reset();
     }
   }
 });

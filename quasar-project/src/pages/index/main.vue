@@ -192,7 +192,7 @@
             v-for="message in visibleMessages"
             :key="message.id"
             class="message-row"
-            :class="{ 'message-addressed': isAddressedToMe(message) }"
+            :class="{ 'message-addressed': message.addressedToMe }"
           >
             <q-avatar size="34px" color="secondary" text-color="white">{{
               message.author.slice(0, 1)
@@ -204,10 +204,12 @@
                   message.time
                 }}</span></div
               >
-              <div
-                class="message-bubble"
-                v-html="highlightMentions(message)"
-              ></div>
+              <div class="message-bubble">
+                <template v-for="(part, index) in message.parts" :key="index">
+                  <mark v-if="part.mention">{{ part.text }}</mark>
+                  <template v-else>{{ part.text }}</template>
+                </template>
+              </div>
             </div>
           </div>
         </div>
@@ -319,18 +321,28 @@ import { useQuasar } from "quasar";
 import {
   useChatStore,
   type Channel,
-  type ChatMessage,
   type Member,
   type Presence
 } from "@/stores/example-store";
 import {
   isServerChannel,
   useMessagesStore,
-  type ChannelMember,
-  type ServerMessage
+  type ChannelMember
 } from "@/stores/messages";
 import { ApiError } from "@/services/api";
+import { splitMentions, type MessagePart } from "@/utils/mentions";
 import { useTheme } from "@/composables/useTheme";
+
+/** A message prepared for the message list. */
+interface MessageView {
+  id: number;
+  author: string;
+  time: string;
+  /** The body as plain text and highlighted "@nickname" pieces (UC6) */
+  parts: MessagePart[];
+  /** The message mentions the logged-in user (UC6) */
+  addressedToMe: boolean;
+}
 
 const store = useChatStore();
 const messages = useMessagesStore();
@@ -366,10 +378,14 @@ const serverChannelId = computed(() =>
     ? (selectedChannel.value?.id ?? null)
     : null
 );
-const visibleMessages = computed<ChatMessage[]>(() =>
+const visibleMessages = computed<MessageView[]>(() =>
   serverChannelId.value
-    ? messages.messagesFor(serverChannelId.value).map(toChatMessage)
-    : (selectedChannel.value?.messages ?? [])
+    ? messages
+        .messagesFor(serverChannelId.value)
+        .map(message => toMessageView(message, formatTime(message.createdAt)))
+    : (selectedChannel.value?.messages ?? []).map(message =>
+        toMessageView(message, message.time)
+      )
 );
 const canLoadMore = computed(() =>
   serverChannelId.value ? messages.hasMoreFor(serverChannelId.value) : true
@@ -420,13 +436,18 @@ function formatTime(iso: string) {
     ? time
     : `${date.toLocaleDateString()} ${time}`;
 }
-function toChatMessage(message: ServerMessage): ChatMessage {
+function toMessageView(
+  message: { id: number; author: string; body: string; mentions?: string[] },
+  time: string
+): MessageView {
+  const mentions = message.mentions ?? [];
+  const myNickName = store.user?.nickName.toLowerCase();
   return {
     id: message.id,
     author: message.author,
-    body: message.body,
-    time: formatTime(message.createdAt),
-    mentions: message.mentions
+    time,
+    parts: splitMentions(message.body, mentions),
+    addressedToMe: mentions.some(name => name.toLowerCase() === myNickName)
   };
 }
 function showError(error: unknown) {
@@ -443,14 +464,8 @@ watch(
   serverChannelId,
   async channelId => {
     if (!channelId) return;
-    messages.subscribe(channelId);
     try {
-      await Promise.all([
-        messages.loadLatest(channelId),
-        messages.loadMembers(channelId)
-      ]);
-      await nextTick();
-      scrollToBottom();
+      await messages.open(channelId);
     } catch (error) {
       showError(error);
     }
@@ -458,13 +473,17 @@ watch(
   { immediate: true }
 );
 
-// A new message at the end (sent or received live) scrolls down, unless the
-// user has scrolled up to read older messages
+// Switching to another channel shows its newest messages
+watch(() => selectedChannel.value?.id, scrollToBottom, { flush: "post" });
+
+// A new message at the end (loaded, sent or received live) scrolls down,
+// unless the user has scrolled up to read older messages
 watch(
   () => visibleMessages.value.at(-1)?.id,
   async () => {
     const scrollElement = messageScroll.value;
     if (!scrollElement) return;
+    // Measured before the new message is rendered
     const nearBottom =
       scrollElement.scrollHeight -
         scrollElement.scrollTop -
@@ -511,7 +530,8 @@ async function send() {
     await nextTick();
     scrollToBottom();
   } catch (error) {
-    composer.value = text;
+    // Put the text back, unless the user has already started typing something else
+    if (!composer.value) composer.value = text;
     showError(error);
   }
 }
@@ -551,34 +571,6 @@ async function loadHistory() {
 function onScroll(event: Event) {
   if ((event.target as HTMLElement).scrollTop < 20 && !loading.value)
     loadHistory();
-}
-/** UC6: marks @nickname of a mentioned user (server data) or a channel member. */
-function highlightMentions(message: ChatMessage) {
-  const mentioned = new Set(
-    (message.mentions ?? []).map(name => name.toLowerCase())
-  );
-  const escaped = message.body
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-  return escaped.replace(
-    /(^|[^a-z0-9._%+-])@([a-z0-9_-]+)(?![a-z0-9_.-])/gi,
-    (match, boundary: string, nickname: string) => {
-      const isMember =
-        mentioned.has(nickname.toLowerCase()) ||
-        members.value.some(
-          member => member.nickName.toLowerCase() === nickname.toLowerCase()
-        );
-      return isMember ? `${boundary}<mark>@${nickname}</mark>` : match;
-    }
-  );
-}
-function isAddressedToMe(message: ChatMessage) {
-  return (
-    message.mentions?.some(
-      name => name.toLowerCase() === store.user?.nickName.toLowerCase()
-    ) ?? false
-  );
 }
 function createChannel() {
   if (!store.createChannel(newChannel.value, privateChannel.value)) {
