@@ -36,10 +36,26 @@ router
       .as('auth')
 
     /**
-     * UC3, UC6, UC7, UC10: messages and members of a channel. Members only.
+     * UC2, UC4: the user's channel list, and joining or creating a channel by name.
      */
     router
       .group(() => {
+        router.get('/', [controllers.Channels, 'index']).as('index')
+        router.post('join', [controllers.Channels, 'join']).as('join')
+      })
+      .prefix('channels')
+      .as('channels')
+      .use(middleware.auth())
+
+    /**
+     * One channel.
+     * UC5 /cancel (leave) and UC4 /quit (close, admin only).
+     * UC3, UC6, UC7, UC10: its messages and members. Members only.
+     */
+    router
+      .group(() => {
+        router.delete('membership', [controllers.Channels, 'leave']).as('leave')
+        router.delete('/', [controllers.Channels, 'destroy']).as('destroy')
         router.get('messages', [controllers.ChannelMessages, 'index']).as('messages.index')
         router.post('messages', [controllers.ChannelMessages, 'store']).as('messages.store')
         router.get('members', [controllers.ChannelMembers, 'index']).as('members.index')

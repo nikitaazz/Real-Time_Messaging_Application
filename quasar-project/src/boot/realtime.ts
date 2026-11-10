@@ -3,6 +3,7 @@ import { watch } from "vue";
 import { getToken } from "@/services/api";
 import { connectSocket, disconnectSocket } from "@/services/socket";
 import { useAuthStore } from "@/stores/auth";
+import { useChannelsStore } from "@/stores/channels";
 import { useMessagesStore } from "@/stores/messages";
 
 /**
@@ -16,6 +17,7 @@ import { useMessagesStore } from "@/stores/messages";
 export default defineBoot(({ store }) => {
   const auth = useAuthStore(store);
   const messages = useMessagesStore(store);
+  const channels = useChannelsStore(store);
 
   watch(
     () => auth.user?.id,
@@ -27,9 +29,16 @@ export default defineBoot(({ store }) => {
       if (userId === undefined || !token) return;
 
       connectSocket(token, {
-        // Sent after every (re)connect: fetch what was posted while we were not connected
-        ready: () => void messages.resync(),
-        "message:new": message => messages.receive(message)
+        // Sent after every (re)connect: fetch what changed while we were not connected.
+        // The channel list first, so channels that were closed meanwhile are not asked for.
+        ready: () =>
+          void channels
+            .load()
+            .catch(() => {})
+            .then(() => messages.resync()),
+        "message:new": message => messages.receive(message),
+        "channel:members": event => channels.onMembersChanged(event.channelId),
+        "channel:deleted": event => channels.onDeleted(event.channelId)
       });
     },
     // Run at the moment the user changes, before any page starts loading messages

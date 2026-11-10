@@ -20,6 +20,8 @@ export const userRoom = (userId: number) => `user:${userId}`
  * The REST API stays the only way to change data. Sockets only push events
  * to the clients that are allowed to see them:
  * - "message:new" to the members of a channel (UC3)
+ * - "channel:members" to the members of a channel when someone joins or leaves (UC2, UC10)
+ * - "channel:deleted" to the members of a channel that stopped existing (UC2, UC5)
  *
  * The client authenticates with the same access token it uses for the API.
  */
@@ -130,6 +132,15 @@ class Ws {
   /** Starts sending a channel's events to all tabs of a user, e.g. after /join. */
   addToChannel(userId: number, channelId: number) {
     this.io?.in(userRoom(userId)).socketsJoin(channelRoom(channelId))
+  }
+
+  /**
+   * A channel stopped existing (/quit, the admin's /cancel, or 30 days without
+   * a message): tells its connected members, then empties its room.
+   */
+  closeChannel(channelId: number) {
+    this.toChannel(channelId, 'channel:deleted', { channelId })
+    this.io?.socketsLeave(channelRoom(channelId))
   }
 
   async shutdown() {

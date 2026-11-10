@@ -65,10 +65,12 @@
                 "
                 @click.stop="
                   isInvited(channel)
-                    ? store.declineInvitation(channel.id)
+                    ? leaveChannel(channel.id)
                     : channelMenu(channel.id)
                 "
-                ><q-tooltip>Leave channel</q-tooltip></q-btn
+                ><q-tooltip>{{
+                  isInvited(channel) ? "Decline invitation" : "Leave channel"
+                }}</q-tooltip></q-btn
               ></q-item-section
             >
             <q-item-section
@@ -307,6 +309,7 @@
           ><q-btn flat label="Cancel" v-close-popup /><q-btn
             color="primary"
             label="Create"
+            :loading="creatingChannel"
             :disable="!newChannel.trim()"
             @click="createChannel"
         /></div>
@@ -329,6 +332,7 @@ import {
   useMessagesStore,
   type ChannelMember
 } from "@/stores/messages";
+import { useChannelsStore } from "@/stores/channels";
 import { ApiError } from "@/services/api";
 import { splitMentions, type MessagePart } from "@/utils/mentions";
 import { useTheme } from "@/composables/useTheme";
@@ -346,15 +350,17 @@ interface MessageView {
 
 const store = useChatStore();
 const messages = useMessagesStore();
+const channels = useChannelsStore();
 const { isDark, toggleTheme } = useTheme();
 const $q = useQuasar();
 const isMobile = computed(() => $q.screen.width <= 640);
 const search = ref("");
 const composer = ref("");
-const channelDialog = ref(false); 
+const channelDialog = ref(false);
 const newChannel = ref("");
 const channelError = ref("");
 const privateChannel = ref(false);
+const creatingChannel = ref(false);
 const membersOpen = ref($q.screen.width > 900);
 const mobileConversationVisible = ref(false);
 const loading = ref(false);
@@ -405,8 +411,9 @@ function isInvited(channel: Channel) {
     !channel.members.some(person => person.id === store.user?.id)
   );
 }
-function openChannel(channel: Channel) {
-  if (isInvited(channel)) store.runCommand(`/join ${channel.name}`);
+async function openChannel(channel: Channel) {
+  // Selecting an invitation accepts it (UC2)
+  if (isInvited(channel)) await joinChannel(channel.name);
   else store.selectChannel(channel.id);
   if (store.selectedChannelId === channel.id)
     mobileConversationVisible.value = true;
@@ -512,12 +519,7 @@ async function send() {
   composer.value = "";
   store.setTyping("");
   if (text.startsWith("/")) {
-    if (text === "/list" && serverChannelId.value) {
-      await listMembers(serverChannelId.value);
-      return;
-    }
-    store.runCommand(text);
-    if (text === "/list" && selectedChannel.value) membersOpen.value = true;
+    await runCommand(text);
     return;
   }
   if (!serverChannelId.value) {
@@ -572,16 +574,117 @@ function onScroll(event: Event) {
   if ((event.target as HTMLElement).scrollTop < 20 && !loading.value)
     loadHistory();
 }
-function createChannel() {
-  if (!store.createChannel(newChannel.value, privateChannel.value)) {
-    channelError.value = store.commandHint;
+/** Readable text for an error of the channel endpoints. */
+function channelErrorText(error: unknown) {
+  if (error instanceof ApiError && error.status === 422)
+    return "Use only letters, digits, - and _ (at most 50 characters).";
+  return error instanceof ApiError ? error.message : "Something went wrong.";
+}
+/**
+ * UC4: joins the channel with this name; the server creates it when the name
+ * is free. Returns the channel, or null when the server refused.
+ */
+async function joinChannel(name: string, isPrivate = false) {
+  try {
+    const channel = await channels.join(name, isPrivate);
+    store.commandHint = "";
+    mobileConversationVisible.value = true;
+    return channel;
+  } catch (error) {
+    store.commandHint = channelErrorText(error);
+    return null;
+  }
+}
+/** UC5: /cancel, leaving from the list, and declining an invitation. */
+async function leaveChannel(id: string) {
+  const channel = store.channels.find(item => item.id === id);
+  if (!channel) return;
+  const isOwner = channel.ownerId === store.user?.id;
+  try {
+    await channels.leave(id);
+    // The server deletes a channel when its admin leaves
+    store.commandHint = isInvited(channel)
+      ? ""
+      : isOwner
+        ? `#${channel.name} was closed.`
+        : `You left #${channel.name}.`;
+  } catch (error) {
+    showError(error);
+  }
+}
+/** UC4: /quit, the admin closes the channel for everyone. */
+async function closeChannel(id: string) {
+  const channel = store.channels.find(item => item.id === id);
+  if (!channel) return;
+  try {
+    await channels.close(id);
+    store.commandHint = `#${channel.name} was closed.`;
+  } catch (error) {
+    showError(error);
+  }
+}
+/**
+ * UC3: commands typed into the command line.
+ * /join, /cancel, /quit and /list are handled by the backend.
+ */
+async function runCommand(text: string) {
+  const [command, ...args] = text.split(/\s+/);
+  const current = serverChannelId.value;
+  const needsChannel = "Select a channel first.";
+
+  switch (command) {
+    case "/join": {
+      const [name, visibility] = args;
+      if (
+        !name ||
+        args.length > 2 ||
+        (visibility && visibility !== "private")
+      ) {
+        store.commandHint = "Use /join channelName [private].";
+        return;
+      }
+      await joinChannel(name, visibility === "private");
+      return;
+    }
+    case "/cancel":
+      if (current) await leaveChannel(current);
+      else store.commandHint = needsChannel;
+      return;
+    case "/quit":
+      if (current) await closeChannel(current);
+      else store.commandHint = needsChannel;
+      return;
+    case "/list":
+      if (current) await listMembers(current);
+      else store.commandHint = needsChannel;
+      return;
+    case "/invite":
+    case "/revoke":
+    case "/kick":
+      store.commandHint = `${command} is not connected to the server yet.`;
+      return;
+    default:
+      store.commandHint = `Unknown command ${command}.`;
+  }
+}
+async function createChannel() {
+  // The dialog accepts spaces; channel names are a single word
+  const name = newChannel.value.trim().replace(/\s+/g, "-");
+  creatingChannel.value = true;
+  try {
+    await channels.join(name, privateChannel.value);
+  } catch (error) {
+    channelError.value = channelErrorText(error);
     return;
+  } finally {
+    creatingChannel.value = false;
   }
   store.commandHint = "";
   channelError.value = "";
   newChannel.value = "";
   privateChannel.value = false;
   channelDialog.value = false;
+  mobileConversationVisible.value = true;
 }
 function channelMenu(id: string) {
   const channel = store.channels.find(item => item.id === id);
@@ -593,8 +696,7 @@ function channelMenu(id: string) {
     cancel: true,
     persistent: true
   }).onOk(() => {
-    if (isOwner) store.deleteChannel(id);
-    else store.leaveChannel(id);
+    void (isOwner ? closeChannel(id) : leaveChannel(id));
   });
 }
 function leave() {

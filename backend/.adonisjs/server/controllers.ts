@@ -7,6 +7,7 @@ export const controllers = {
   AccessTokens: () => import('#controllers/access_tokens_controller'),
   ChannelMembers: () => import('#controllers/channel_members_controller'),
   ChannelMessages: () => import('#controllers/channel_messages_controller'),
+  Channels: () => import('#controllers/channels_controller'),
   NewAccount: () => import('#controllers/new_account_controller'),
   Profile: () => import('#controllers/profile_controller'),
 }

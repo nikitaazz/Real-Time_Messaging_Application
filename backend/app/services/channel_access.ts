@@ -1,6 +1,7 @@
 import Channel from '#models/channel'
 import ChannelUser from '#models/channel_user'
 import ChannelAccessException from '#exceptions/channel_access_exception'
+import { isExpired } from '#services/channel_expiry'
 import { isId } from '#validators/id'
 import type User from '#models/user'
 
@@ -25,7 +26,8 @@ export async function isMember(userId: number, channelId: number) {
  */
 export async function findJoinedChannel(user: User, channelId: unknown) {
   const channel = isId(channelId) ? await Channel.find(channelId) : null
-  if (!channel) throw ChannelAccessException.notFound()
+  // A channel idle for more than 30 days no longer exists (UC2), even before it is cleaned up
+  if (!channel || isExpired(channel)) throw ChannelAccessException.notFound()
   if (!(await isMember(user.id, channel.id))) throw ChannelAccessException.notMember()
   return channel
 }

@@ -19,6 +19,10 @@ export interface ServerEvents {
   ready: () => void;
   /** A message was posted in one of the user's channels (UC3). */
   "message:new": (message: ServerMessage) => void;
+  /** Someone joined or left one of the user's channels (UC2, UC10). */
+  "channel:members": (event: { channelId: number }) => void;
+  /** One of the user's channels stopped existing (UC2, UC5). */
+  "channel:deleted": (event: { channelId: number }) => void;
 }
 
 /** Events the client sends. */
@@ -41,6 +45,8 @@ export function connectSocket(token: string, handlers: ServerEvents) {
   });
   socket.on("ready", handlers.ready);
   socket.on("message:new", handlers["message:new"]);
+  socket.on("channel:members", handlers["channel:members"]);
+  socket.on("channel:deleted", handlers["channel:deleted"]);
   socket.on("connect_error", error =>
     console.warn("BeBe live updates are unavailable:", error.message)
   );

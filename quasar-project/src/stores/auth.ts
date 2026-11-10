@@ -1,5 +1,6 @@
 import { acceptHMRUpdate, defineStore } from "pinia";
-import { api, getToken, setToken } from "@/services/api";
+import { api, ApiError, getToken, setToken } from "@/services/api";
+import { useChannelsStore } from "@/stores/channels";
 import {
   useChatStore,
   type Member,
@@ -37,8 +38,9 @@ const presence: Record<AuthUser["status"], Presence> = {
 };
 
 /**
- * Bridges the real account into the chat store, which still uses mock
- * channels and messages until they are moved to the backend (UC2, UC3).
+ * Bridges the real account into the chat store, which the chat page reads,
+ * and loads the user's channels from the backend (UC2). The features that are
+ * not on the backend yet (presence, notifications, typing) still live there.
  */
 function startChatSession(user: AuthUser) {
   const chat = useChatStore();
@@ -56,8 +58,19 @@ function startChatSession(user: AuthUser) {
     firstName: user.firstName,
     lastName: user.lastName,
     nickName: user.nickName,
-    mentionOnly: user.mentionOnly
+    mentionOnly: user.mentionOnly,
+    // startSession() fills in demo channels; the real list comes from the backend
+    channels: [],
+    selectedChannelId: ""
   });
+  void useChannelsStore()
+    .load()
+    .catch(reason => {
+      chat.commandHint =
+        reason instanceof ApiError
+          ? reason.message
+          : "Your channels could not be loaded.";
+    });
 }
 
 export const useAuthStore = defineStore("auth", {
@@ -115,6 +128,7 @@ export const useAuthStore = defineStore("auth", {
     clearSession() {
       setToken(null);
       this.user = null;
+      useChannelsStore().$reset();
       useChatStore().logout();
     }
   }
