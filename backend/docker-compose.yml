@@ -12,8 +12,9 @@ services:
       POSTGRES_PASSWORD: bebe
       POSTGRES_DB: bebe
     ports:
-      # 5433 on the host, so it doesn't clash with a locally installed PostgreSQL on 5432
-      - '5433:5432'
+      # 5433 on the host, so it doesn't clash with a locally installed PostgreSQL on 5432.
+      # Docker Compose reads DB_PORT from .env, so if 5433 is taken too, change DB_PORT there.
+      - '${DB_PORT:-5433}:5432'
     volumes:
       - pgdata:/var/lib/postgresql/data
       # Creates the extra "bebe_test" database on first start

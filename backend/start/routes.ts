@@ -34,5 +34,19 @@ router
       })
       .prefix('auth')
       .as('auth')
+
+    /**
+     * UC3, UC6, UC7, UC10: messages and members of a channel. Members only.
+     */
+    router
+      .group(() => {
+        router.get('messages', [controllers.ChannelMessages, 'index']).as('messages.index')
+        router.post('messages', [controllers.ChannelMessages, 'store']).as('messages.store')
+        router.get('members', [controllers.ChannelMembers, 'index']).as('members.index')
+      })
+      .prefix('channels/:id')
+      .where('id', router.matchers.number())
+      .as('channels')
+      .use(middleware.auth())
   })
   .prefix('/api/v1')
