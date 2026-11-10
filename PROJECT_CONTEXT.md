@@ -155,13 +155,17 @@ pnpm exec quasar build
 
 The frontend reads the API address from `QCLI_API_URL` (see `quasar-project/.env.example`). The default is `http://localhost:3333/api/v1`; the WebSocket uses the same host and port.
 
-### 2.2 Where the work is (10 Nov)
+### 2.2 Where the work is
 
-**`main` contains everything** (commit `a203171`): the Phase 1 prototype, backend setup and migrations (PR #1), UC1 accounts, and Mykyta's messages work (PR #2).
+**`main` contains everything.** Start new work from `main`.
 
-PR #2 was merged into `feat/auth` instead of `main`, so on 10 Nov `feat/auth` was merged with `main` and pushed to `main` directly, without a pull request. `feat/auth` and `main` are identical; start new work from `main`.
+| Date | Commit | What reached `main` | How |
+|---|---|---|---|
+| 9 Nov | `a82b370` | Backend setup, Docker database, migrations (Zakharii) | Pull request #1, merged by its author |
+| 10 Nov | `a203171` | UC1 accounts (Zakharii) and messages, history, mentions, /list, live messages (Mykyta) | Mykyta's pull request #2 went into `feat/auth` by mistake; `feat/auth` was then pushed to `main` directly |
+| 10 Nov | `4b9cabc` | UC2 channel list, UC5 /cancel, /join and /quit, 30-day expiry (Zakharii) | Pushed to `main` directly, no pull request |
 
-**Branch `feat/channels`** (not in `main` yet) adds UC2 + UC5: the channel endpoints and the channel list from the backend. Sections 2.3 to 2.7 describe the code including this branch.
+The old branches `feat/backend-setup`, `feat/auth`, `feat/messages` and `feat/channels` are fully contained in `main`.
 
 ### 2.3 Code layout
 
@@ -262,7 +266,7 @@ All paths are under `/api/v1`. Successful responses are wrapped in `{ "data": ..
 
 For UC4 (`/invite`, `/revoke`, `/kick`), `ws.addToChannel(userId, channelId)`, `ws.removeFromChannel(userId, channelId)` and `ws.closeChannel(channelId)` already exist.
 
-### 2.6 Use-case status (on `feat/channels`)
+### 2.6 Use-case status (on `main`)
 
 | UC | Backend | Frontend | Notes |
 |---|---|---|---|
@@ -286,7 +290,7 @@ For UC4 (`/invite`, `/revoke`, `/kick`), `ws.addToChannel(userId, channelId)`, `
 - The demo buttons in Settings ("test message", "scheduled message") add a message to the old mock list, which the chat page no longer shows for backend channels. The notification itself still appears.
 - `main.vue` still contains the branches for mock channels (`isServerChannel()`); they are no longer reached and can be removed when `example-store.ts` is split.
 
-### 2.7 Verified on 10 Nov (branch `feat/channels`)
+### 2.7 Verified on 10 Nov (on `main`, commit `4b9cabc`)
 
 - Backend: `node ace test` passes, **44 of 44**: 6 auth, 16 channels (list, join, leave, quit, expiry, live updates), 10 messages/history/members, 5 live messages, 7 unit tests (mentions, ids). `pnpm run typecheck` and `pnpm run lint` pass.
 - Frontend: `pnpm run typecheck` passes; `oxlint src` is clean; the 16 existing `node:test` tests pass; `quasar build` succeeds.
@@ -297,8 +301,9 @@ For UC4 (`/invite`, `/revoke`, `/kick`), `ws.addToChannel(userId, channelId)`, `
 
 **Before the week 9 demo**
 
-1. **Try UC2 + UC5 in a browser** and fix what shows up. Then open a pull request from `feat/channels` into `main` for Mykyta to review.
-2. **Test together** in two browsers with two users, following the checklist in `WEEK9_PLAN.md`.
+1. **Try everything in a browser** and fix what shows up. Nothing since UC1 has been clicked through in a real browser yet.
+2. **Mykyta reviews `4b9cabc`.** It went to `main` without a review and changes four of his files (`ws.ts`, `channel_access.ts`, `socket.ts`, `realtime.ts`). He should pull `main` before continuing.
+3. **Test together** in two browsers with two users, following the checklist in `WEEK9_PLAN.md`.
 
 **For Phase 2 (due 6 Dec)**
 
@@ -315,13 +320,13 @@ For UC4 (`/invite`, `/revoke`, `/kick`), `ws.addToChannel(userId, channelId)`, `
 
 **Libraries to justify in the documentation so far:** Socket.IO (server and client) for real-time delivery; `pg` as the PostgreSQL driver. Everything else came with Quasar or the AdonisJS starter kit. HTTP calls use the browser's `fetch`, so no HTTP library was added.
 
-**Teamwork evidence:** non-merge commits are currently 29 by Mykyta and 8 by Zakharii (under two git names). Commit counts differ in size, so compare lines of hand-written code per person, not commit counts.
+**Teamwork evidence:** non-merge commits are 29 by Mykyta and 9 by Zakharii (under two git names), but commits differ a lot in size. Hand-written lines since the backend work started (no lockfiles, generated files or starter-kit code): about **2,070 by Zakharii** and **1,840 by Mykyta**, so the amount of code is roughly balanced. Both counts include tests.
 
 ### 2.9 Git and workspace notes
 
 - The remote default branch is **`main`**. Local `master` tracks it; update it with `git pull` before branching.
-- Work happens on feature branches (`feat/...`) and goes into `main` through pull requests reviewed by the other person.
-- Pull request #2 targeted `feat/auth` instead of `main`, and both pull requests so far were merged by their own author without a review. Check the base branch when opening a pull request, and have the other person review and merge it.
+- Planned workflow: feature branches (`feat/...`) merged into `main` through pull requests reviewed by the other person. **In practice no change has been reviewed yet:** both pull requests were merged by their own author, and the last two changes were pushed to `main` directly. The spec requires code review between team members and the lecturer looks at the repository, so review at least the next changes properly.
+- When opening a pull request, check that its base branch is `main` (pull request #2 accidentally targeted `feat/auth`).
 - `repo.txt` and `Zakharii_Okseniuk_Mykyta_Nosenko.zip` in the repo root are submission files, ignored locally through `.git/info/exclude`. Don't delete or commit them.
 - `backend/.env` holds local settings and is ignored by git. `backend/.env.example` matches the Docker database.
 - The submission ZIP must not contain `node_modules/` or `dist/`.
