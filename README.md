@@ -1,8 +1,45 @@
-# Chat App
+<div align="center">
 
-A Discord-like web application for text communication where users can create and join public or private channels, exchange messages, mention other users, and view chat history. The app supports user statuses, channel management, real-time typing indicators, and notifications, making it easy to communicate, collaborate, and stay connected with others.
+# 💬 BeBe Chat
 
-## How to Run
+**A Discord-like chat web app with public and private channels, slash commands, mentions and notifications.**
+
+![Vue](https://img.shields.io/badge/Vue_3-4FC08D?style=for-the-badge&logo=vuedotjs&logoColor=white)
+![Quasar](https://img.shields.io/badge/Quasar-1976D2?style=for-the-badge&logo=quasar&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white)
+![Pinia](https://img.shields.io/badge/Pinia-FFD859?style=for-the-badge&logo=pinia&logoColor=black)
+![PWA](https://img.shields.io/badge/PWA-5A0FC8?style=for-the-badge&logo=pwa&logoColor=white)
+
+<img src="quasar-project/screenshots/main_screen.png" alt="Main screen" width="85%">
+
+</div>
+
+---
+
+## ✨ Features
+
+- 📢 **Channels.** Create, join and leave public or private channels; accept or reject invitations
+- ⌨️ **Slash commands.** `/join`, `/invite`, `/revoke`, `/kick`
+- 🏷️ **Mentions** and full chat history
+- ✍️ **Typing indicators**
+- 🟢 **User statuses.** Online, Away, Do Not Disturb
+- 🔔 **Notifications**, including a test notification button
+- 🎨 **Themes.** Several color themes
+- 📱 **Installable PWA** with a service worker
+
+## 🛠 Tech stack
+
+| | |
+|---|---|
+| Framework | Vue 3 + Quasar 2 (Vite) |
+| Language | TypeScript |
+| State | Pinia |
+| Routing | Vue Router (file-based routes) |
+| Quality | oxlint + oxfmt, `node:test` unit tests |
+
+> Built as a project for the VPWA (Progressive Web Applications) course.
+
+## 🚀 How to Run
 
 ### 1. Install Dependencies
 
@@ -53,7 +90,7 @@ To build the application for production, run:
 pnpm exec quasar build
 ```
 
-## How to Use
+## 📖 How to Use
 
 ![Authentication interface](quasar-project/screenshots/login_screen.png)
 
