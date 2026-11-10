@@ -5,7 +5,12 @@
  * Successful responses are returned as-is; most endpoints wrap their payload
  * in { data: ... }. Failed responses throw an ApiError.
  */
-export const API_URL = "http://localhost:3333/api/v1";
+
+/**
+ * Base URL of the backend API, without a trailing slash. It comes from
+ * QCLI_API_URL in .env (see .env.example); quasar.config.ts has the default.
+ */
+export const API_URL: string = import.meta.env.QCLI_API_URL;
 
 const TOKEN_KEY = "bebe.token";
 

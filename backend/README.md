@@ -36,6 +36,8 @@ REST API for BeBe chat, built with **AdonisJS 7** and **PostgreSQL**.
 
    Without Docker, point these at a locally installed PostgreSQL instead.
 
+   If port 5433 is already taken (for example by a locally installed PostgreSQL, which then answers with "password authentication failed for user bebe"), set another `DB_PORT` in `.env`, such as `5434`, and run `docker compose up -d` again. Docker Compose reads `DB_PORT` from `.env`, so the container and the app use the same port.
+
 4. Create the tables:
 
    ```bash

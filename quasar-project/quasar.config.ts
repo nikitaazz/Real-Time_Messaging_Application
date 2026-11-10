@@ -4,6 +4,16 @@
 import { defineConfig } from "#q-app";
 
 export default defineConfig((/* ctx */) => {
+  /**
+   * Address of the backend API. Set QCLI_API_URL in a .env file (see .env.example)
+   * or in the terminal to use another server; the default is the local backend.
+   * https://quasar.dev/quasar-cli-vite/handling-import-meta-env
+   */
+  const apiUrl = (
+    import.meta.env.QCLI_API_URL || "http://localhost:3333/api/v1"
+  ).replace(/\/+$/, "");
+  const apiOrigin = new URL(apiUrl).origin;
+
   return {
     // https://v2.quasar.dev/quasar-cli-vite/prefetch-feature
     // preFetch: true,
@@ -11,7 +21,7 @@ export default defineConfig((/* ctx */) => {
     // app boot file (/src/boot)
     // --> boot files are part of "main.js"
     // https://v2.quasar.dev/quasar-cli-vite/boot-files
-    boot: [],
+    boot: ["realtime"],
 
     // https://v2.quasar.dev/quasar-cli-vite/quasar-config-file#css
     css: ["app.scss"],
@@ -45,12 +55,20 @@ export default defineConfig((/* ctx */) => {
       // https://v2.quasar.dev/quasar-cli-vite/page-routing-with-vue-router#filename-based-routing
       filenameBasedRouting: true,
 
-      vueRouterMode: "hash" // available values: 'hash', 'history'
+      vueRouterMode: "hash", // available values: 'hash', 'history'
       // vueRouterBase,
 
       // publicPath: '/',
       // define: {},
-      // defineEnv: {}
+
+      // Read in the app as import.meta.env.<NAME>, in index.html as importMetaEnv.<NAME>
+      defineEnv: {
+        QCLI_API_URL: apiUrl,
+        // Where the browser may connect to (Content-Security-Policy in index.html):
+        // the API and the WebSocket on the same host and port
+        API_ORIGIN: apiOrigin,
+        API_WS_ORIGIN: apiOrigin.replace(/^http/, "ws")
+      }
       // ignorePublicFolder: true,
       // minify: false,
       // distDir
