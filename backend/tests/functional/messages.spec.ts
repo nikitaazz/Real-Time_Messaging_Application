@@ -110,6 +110,24 @@ test.group('UC3 sending messages', (group) => {
     const guest = await client.post(`/api/v1/channels/${channel.id}/messages`).json({ body: 'Hi' })
     guest.assertStatus(401)
   })
+
+  test('a channel id too big for the database is 404, not a server error', async ({ client }) => {
+    const ed = await createUser('ed')
+
+    // 3000000000 doesn't fit PostgreSQL's integer type
+    const post = await client
+      .post('/api/v1/channels/3000000000/messages')
+      .json({ body: 'Hi' })
+      .loginAs(ed)
+    post.assertStatus(404)
+    post.assertBodyContains({ errors: [{ code: 'E_CHANNEL_NOT_FOUND' }] })
+
+    const history = await client.get('/api/v1/channels/99999999999999999999/messages').loginAs(ed)
+    history.assertStatus(404)
+
+    const members = await client.get('/api/v1/channels/3000000000/members').loginAs(ed)
+    members.assertStatus(404)
+  })
 })
 
 test.group('UC6 mentions', (group) => {
@@ -174,19 +192,31 @@ test.group('UC7 history', (group) => {
     )
   })
 
-  test('only members can read history, and the limit is checked', async ({ client }) => {
+  test('only members can read history', async ({ client }) => {
     const ed = await createUser('ed')
     const mira = await createUser('mira')
     const channel = await createChannel(ed)
 
     const outsider = await client.get(`/api/v1/channels/${channel.id}/messages`).loginAs(mira)
     outsider.assertStatus(403)
+  })
 
-    const tooMany = await client
-      .get(`/api/v1/channels/${channel.id}/messages`)
-      .qs({ limit: 1000 })
-      .loginAs(ed)
+  test('the page size and the cursor are checked', async ({ client }) => {
+    const ed = await createUser('ed')
+    const channel = await createChannel(ed)
+    const history = (query: Record<string, unknown>) =>
+      client.get(`/api/v1/channels/${channel.id}/messages`).qs(query).loginAs(ed)
+
+    const tooMany = await history({ limit: 1000 })
     tooMany.assertStatus(422)
+    tooMany.assertBodyContains({ errors: [{ field: 'limit' }] })
+
+    // Not a message id: zero, a fraction, text, or too big for the database
+    for (const before of [0, 1.5, 'abc', 3_000_000_000]) {
+      const response = await history({ before })
+      response.assertStatus(422)
+      response.assertBodyContains({ errors: [{ field: 'before' }] })
+    }
   })
 })
 

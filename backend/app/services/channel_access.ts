@@ -1,6 +1,7 @@
 import Channel from '#models/channel'
 import ChannelUser from '#models/channel_user'
 import ChannelAccessException from '#exceptions/channel_access_exception'
+import { isId } from '#validators/id'
 import type User from '#models/user'
 
 /**
@@ -19,10 +20,11 @@ export async function isMember(userId: number, channelId: number) {
  * Loads a channel the user has joined. Used by every endpoint that only
  * members may call: sending messages (UC3), history (UC7) and /list (UC10).
  *
+ * @param channelId the ":id" route parameter, as sent by the client
  * @throws ChannelAccessException 404 when the channel doesn't exist, 403 when the user isn't a member
  */
-export async function findJoinedChannel(user: User, channelId: number) {
-  const channel = await Channel.find(channelId)
+export async function findJoinedChannel(user: User, channelId: unknown) {
+  const channel = isId(channelId) ? await Channel.find(channelId) : null
   if (!channel) throw ChannelAccessException.notFound()
   if (!(await isMember(user.id, channel.id))) throw ChannelAccessException.notMember()
   return channel

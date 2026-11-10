@@ -10,7 +10,8 @@ import ChannelUser from '#models/channel_user'
 
 const serverUrl = () => `http://${env.get('HOST')}:${env.get('PORT')}`
 
-async function createMember(nickName: string, channel?: Channel) {
+/** A user with an access token, like after logging in. */
+async function createUser(nickName: string) {
   const user = await User.create({
     firstName: nickName,
     lastName: 'Test',
@@ -18,16 +19,29 @@ async function createMember(nickName: string, channel?: Channel) {
     email: `${nickName}@example.com`,
     password: 'password123',
   })
-  if (channel) {
-    await ChannelUser.create({
-      channelId: channel.id,
-      userId: user.id,
-      state: 'joined',
-      joinedAt: DateTime.now(),
-    })
-  }
   const token = await User.accessTokens.create(user)
   return { user, token: token.value!.release() }
+}
+
+function join(channel: Channel, user: User) {
+  return ChannelUser.create({
+    channelId: channel.id,
+    userId: user.id,
+    state: 'joined',
+    joinedAt: DateTime.now(),
+  })
+}
+
+/** A channel whose owner has joined it. */
+async function createChannel(owner: User, name = 'general') {
+  const channel = await Channel.create({
+    name,
+    isPrivate: false,
+    ownerId: owner.id,
+    lastActivityAt: DateTime.now(),
+  })
+  await join(channel, owner)
+  return channel
 }
 
 /** Connects like the frontend does and resolves once the server has set up the rooms. */
@@ -68,21 +82,11 @@ test.group('Live messages over WebSocket', (group) => {
   })
 
   test('a new message reaches connected members only', async ({ client, assert }) => {
-    const ed = await createMember('ed')
-    const channel = await Channel.create({
-      name: 'general',
-      isPrivate: false,
-      ownerId: ed.user.id,
-      lastActivityAt: DateTime.now(),
-    })
-    await ChannelUser.create({
-      channelId: channel.id,
-      userId: ed.user.id,
-      state: 'joined',
-      joinedAt: DateTime.now(),
-    })
-    const mira = await createMember('mira', channel)
-    const zed = await createMember('zed')
+    const ed = await createUser('ed')
+    const mira = await createUser('mira')
+    const zed = await createUser('zed')
+    const channel = await createChannel(ed.user)
+    await join(channel, mira.user)
 
     const miraSocket = await connect(mira.token)
     const zedSocket = await connect(zed.token)
@@ -108,21 +112,77 @@ test.group('Live messages over WebSocket', (group) => {
   test('connecting without a valid token is refused', async ({ assert }) => {
     await assert.rejects(() => connect(), 'Unauthorized')
     await assert.rejects(() => connect('oat_invalid.token'), 'Unauthorized')
+
+    // A well-formed token whose id is too big for the database: the lookup itself
+    // fails, and the client must not see the database error
+    const hugeId = Buffer.from('99999999999999999999').toString('base64url')
+    await assert.rejects(() => connect(`oat_${hugeId}.c2VjcmV0`), 'Unauthorized')
   })
 
-  test('a socket can subscribe only to channels the user has joined', async ({ assert }) => {
-    const ed = await createMember('ed')
-    const channel = await Channel.create({
-      name: 'secret',
-      isPrivate: true,
-      ownerId: ed.user.id,
-      lastActivityAt: DateTime.now(),
-    })
-    const outsider = await createMember('outsider')
-    const socket = await connect(outsider.token)
+  test('a socket can subscribe only to channels the user has joined', async ({
+    client,
+    assert,
+  }) => {
+    const ed = await createUser('ed')
+    const mira = await createUser('mira')
+    const channel = await createChannel(ed.user)
+    const socket = await connect(mira.token)
     sockets.push(socket)
 
-    const allowed = await socket.emitWithAck('channel:subscribe', channel.id)
-    assert.isFalse(allowed)
+    assert.isFalse(await socket.emitWithAck('channel:subscribe', channel.id))
+
+    // After joining (which happens over the REST API) the same request is accepted
+    await join(channel, mira.user)
+    assert.isTrue(await socket.emitWithAck('channel:subscribe', channel.id))
+
+    const received = nextEvent<{ body: string }>(socket, 'message:new')
+    await client
+      .post(`/api/v1/channels/${channel.id}/messages`)
+      .json({ body: 'Welcome' })
+      .loginAs(ed.user)
+    assert.containsSubset(await received, { body: 'Welcome' })
+  })
+
+  test('a channel id that makes no sense is refused without stopping the server', async ({
+    client,
+    assert,
+  }) => {
+    const ed = await createUser('ed')
+    const socket = await connect(ed.token)
+    sockets.push(socket)
+
+    // 3000000000 doesn't fit PostgreSQL's integer type; the others are not ids at all
+    for (const channelId of [3_000_000_000, 0, -1, 1.5, '1', null, { id: 1 }]) {
+      assert.isFalse(await socket.emitWithAck('channel:subscribe', channelId))
+    }
+
+    const response = await client.get('/')
+    response.assertStatus(200)
+  })
+
+  test('addToChannel and removeFromChannel switch live messages for a user', async ({
+    client,
+    assert,
+  }) => {
+    const ed = await createUser('ed')
+    const mira = await createUser('mira')
+    const channel = await createChannel(ed.user)
+    const socket = await connect(mira.token)
+    sockets.push(socket)
+    const post = (body: string) =>
+      client.post(`/api/v1/channels/${channel.id}/messages`).json({ body }).loginAs(ed.user)
+
+    // What the channel endpoints call after /join ...
+    await join(channel, mira.user)
+    ws.addToChannel(mira.user.id, channel.id)
+    let received = nextEvent<{ body: string }>(socket, 'message:new')
+    await post('first')
+    assert.containsSubset(await received, { body: 'first' })
+
+    // ... and after /cancel, /kick or /revoke
+    ws.removeFromChannel(mira.user.id, channel.id)
+    received = nextEvent<{ body: string }>(socket, 'message:new')
+    await post('second')
+    assert.isNull(await received)
   })
 })

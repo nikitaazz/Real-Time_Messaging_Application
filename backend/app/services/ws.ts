@@ -6,6 +6,7 @@ import { Secret } from '@adonisjs/core/helpers'
 import User from '#models/user'
 import ChannelUser from '#models/channel_user'
 import { isMember } from '#services/channel_access'
+import { isId } from '#validators/id'
 
 /** Every socket of a channel's members is in this room. */
 export const channelRoom = (channelId: number) => `channel:${channelId}`
@@ -35,6 +36,7 @@ class Ws {
       cors: { origin: app.inDev || app.inTest ? true : [] },
     })
 
+    // Runs before a connection is accepted: only logged-in users may connect
     this.io.use(async (socket, next) => {
       try {
         const user = await this.authenticate(socket)
@@ -42,14 +44,21 @@ class Ws {
         socket.data.userId = user.id
         next()
       } catch (error) {
-        next(error as Error)
+        // The client sees this message, so it must not contain internals such as SQL
+        logger.error({ err: error }, 'Socket authentication failed')
+        next(new Error('Unauthorized'))
       }
     })
 
     this.io.on('connection', (socket) => {
-      void this.onConnection(socket).catch((error) =>
+      // Listeners first: an event the client sends while the rooms are still
+      // being joined below would otherwise be lost
+      this.listen(socket)
+      void this.joinRooms(socket).catch((error) => {
         logger.error({ err: error }, 'Socket connection setup failed')
-      )
+        // Dropping the connection makes the client reconnect and try again
+        socket.conn.close()
+      })
     })
   }
 
@@ -61,7 +70,10 @@ class Ws {
     return User.find(Number(accessToken.tokenableId))
   }
 
-  private async onConnection(socket: Socket) {
+  /**
+   * Puts a new socket into the room of its user and of every channel the user has joined.
+   */
+  private async joinRooms(socket: Socket) {
     const userId: number = socket.data.userId
     await socket.join(userRoom(userId))
 
@@ -70,18 +82,38 @@ class Ws {
       .where('state', 'joined')
       .select('channel_id')
     await socket.join(memberships.map((row) => channelRoom(row.channelId)))
-    // Tells the client its channel rooms are set up, so no event is missed after this
+
+    // From now on the client misses nothing. It answers by fetching whatever was
+    // posted before this moment (see resync() in the frontend's messages store).
     socket.emit('ready')
+  }
+
+  /**
+   * Events a client may send.
+   *
+   * Nothing catches an error thrown inside a listener: it becomes an unhandled
+   * promise rejection, which stops the whole Node.js process. So every listener
+   * checks what the client sent and catches its own errors.
+   */
+  private listen(socket: Socket) {
+    const userId: number = socket.data.userId
 
     /**
      * Joins the room of a channel the user became a member of after connecting.
      * The membership is checked, so a socket can't listen to someone else's channel.
+     * Answers true or false through the acknowledgement callback.
      */
-    socket.on('channel:subscribe', async (channelId: unknown, ack?: (ok: boolean) => void) => {
-      const id = Number(channelId)
-      const allowed = Number.isInteger(id) && id > 0 && (await isMember(userId, id))
-      if (allowed) await socket.join(channelRoom(id))
-      if (typeof ack === 'function') ack(allowed)
+    socket.on('channel:subscribe', async (channelId: unknown, ack?: unknown) => {
+      let subscribed = false
+      try {
+        if (isId(channelId) && (await isMember(userId, channelId))) {
+          await socket.join(channelRoom(channelId))
+          subscribed = true
+        }
+      } catch (error) {
+        logger.error({ err: error }, 'channel:subscribe failed')
+      }
+      if (typeof ack === 'function') ack(subscribed)
     })
   }
 

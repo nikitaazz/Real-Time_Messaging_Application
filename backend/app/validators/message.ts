@@ -1,4 +1,5 @@
 import vine from '@vinejs/vine'
+import { MAX_ID } from '#validators/id'
 
 /** Longest message the command line accepts. */
 export const MAX_MESSAGE_LENGTH = 2000
@@ -21,6 +22,6 @@ export const createMessageValidator = vine.create({
  * - limit:  page size
  */
 export const messageHistoryValidator = vine.create({
-  before: vine.number().withoutDecimals().positive().optional(),
+  before: vine.number().withoutDecimals().range([1, MAX_ID]).optional(),
   limit: vine.number().withoutDecimals().range([1, MAX_PAGE_SIZE]).optional(),
 })
