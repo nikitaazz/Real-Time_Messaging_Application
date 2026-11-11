@@ -197,6 +197,20 @@ export default class ChannelMembersController {
 
     // The vote and the ban it may cause are saved together or not at all
     const result = await db.transaction(async (trx) => {
+      // Locks the target's membership row until the transaction ends. Kicks of the
+      // same user then run one after another, so each one counts the votes saved
+      // before it. Without the lock, three members kicking at the same moment
+      // could each count only two votes, and the ban would be missed.
+      // https://www.postgresql.org/docs/current/explicit-locking.html#LOCKING-ROWS
+      const locked = await ChannelUser.query({ client: trx })
+        .where('id', membership.id)
+        .forUpdate()
+        .first()
+      // Banned or removed by a request that held the lock before this one
+      if (!locked || locked.state !== 'joined') {
+        throw ChannelAccessException.notInChannel(target.nickName)
+      }
+
       // Kicking the same user twice doesn't add a second vote
       await Kick.firstOrCreate(
         { channelId: channel.id, targetId: target.id, kickedBy: user.id },
@@ -212,10 +226,9 @@ export default class ChannelMembersController {
       const banned = isAdmin || votes >= KICKS_FOR_BAN
 
       if (banned) {
-        membership.useTransaction(trx)
-        membership.state = 'banned'
-        membership.joinedAt = null
-        await membership.save()
+        locked.state = 'banned'
+        locked.joinedAt = null
+        await locked.save()
       }
       return { votes, banned }
     })

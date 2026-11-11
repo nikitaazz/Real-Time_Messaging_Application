@@ -19,6 +19,8 @@ REST API for BeBe chat, built with **AdonisJS 7** and **PostgreSQL**.
 
    This starts PostgreSQL 17 on **port 5433** with user, password and database all `bebe`, plus an empty `bebe_test` database for tests. Data survives restarts. `docker compose down` stops it; `docker compose down -v` also deletes all data.
 
+   It is the same database the full Docker setup in the repository root uses (`docker compose up --build` there), so the two share their data. If Docker says the container name `bebe-db` is already in use, it comes from an older version of this setup: remove it once with `docker rm -f bebe-db` (the data volume is kept) and start again.
+
 3. Create `.env` from the example. Its defaults already match the Docker database:
 
    ```bash

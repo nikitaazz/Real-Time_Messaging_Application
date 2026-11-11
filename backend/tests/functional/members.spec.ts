@@ -330,6 +330,42 @@ test.group('UC4 /kick', (group) => {
     rejoin.assertBodyContains({ errors: [{ code: 'E_BANNED' }] })
   })
 
+  test('three kicks sent at the same moment still ban the user', async ({ client, assert }) => {
+    const admin = await createUser('admin')
+    const voters = [await createUser('ed'), await createUser('mira'), await createUser('zed')]
+    const troll = await createUser('troll')
+    const channel = await createChannel(admin, 'lobby')
+    for (const member of [...voters, troll]) await addToChannel(channel, member)
+
+    // Repeated a few times: a race only shows up when the requests really overlap
+    for (let round = 0; round < 5; round++) {
+      await Kick.query().where('channel_id', channel.id).delete()
+      await ChannelUser.query()
+        .where('channel_id', channel.id)
+        .where('user_id', troll.id)
+        .update({ state: 'joined' })
+
+      const responses = await Promise.all(
+        voters.map((voter) =>
+          client
+            .post(`/api/v1/channels/${channel.id}/kick`)
+            .json({ nickName: 'troll' })
+            .loginAs(voter)
+        )
+      )
+
+      for (const response of responses) response.assertStatus(200)
+      const results: { banned: boolean; votes: number }[] = responses.map(
+        (response) => response.body().data
+      )
+      assert.sameMembers(
+        results.map((result) => result.votes),
+        [1, 2, 3]
+      )
+      assert.equal(await stateOf(channel, troll), 'banned')
+    }
+  })
+
   test('the admin bans with a single kick', async ({ client, assert }) => {
     const admin = await createUser('admin')
     const troll = await createUser('troll')

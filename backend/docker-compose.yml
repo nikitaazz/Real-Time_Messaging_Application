@@ -1,7 +1,13 @@
 # Local development database for BeBe.
 # Start:  docker compose up -d     (from the backend/ folder)
-# Stop:   docker compose down      (data is kept in the "pgdata" volume)
+# Stop:   docker compose down      (data is kept in the "bebe-pgdata" volume)
 # Reset:  docker compose down -v   (deletes all data)
+#
+# The docker-compose.yml in the repository root includes this file, so the
+# full Docker setup and the local development setup use the same database.
+# The shared project name makes both commands manage the same container.
+name: bebe
+
 services:
   db:
     image: postgres:17-alpine
@@ -13,7 +19,7 @@ services:
       POSTGRES_DB: bebe
     ports:
       # 5433 on the host, so it doesn't clash with a locally installed PostgreSQL on 5432.
-      # Docker Compose reads DB_PORT from .env, so if 5433 is taken too, change DB_PORT there.
+      # Docker Compose reads DB_PORT from backend/.env, so if 5433 is taken too, change DB_PORT there.
       - '${DB_PORT:-5433}:5432'
     volumes:
       - pgdata:/var/lib/postgresql/data
@@ -27,3 +33,5 @@ services:
 
 volumes:
   pgdata:
+    # A fixed name, so it is the same volume whichever folder Compose is started from
+    name: bebe-pgdata

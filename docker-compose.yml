@@ -1,22 +1,14 @@
-services:
-  db:
-    image: postgres:17-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: bebe
-      POSTGRES_PASSWORD: bebe
-      POSTGRES_DB: bebe
-    ports:
-      - "5433:5432"
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-      - ./backend/docker/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U bebe -d bebe"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
+# The whole BeBe app in Docker: database, API and frontend.
+# Start:  docker compose up --build   (from the repository root)
+# Stop:   docker compose down
+# See README.md, "Run the full project with Docker".
+name: bebe
 
+include:
+  # The database, defined once and shared with the backend's development setup
+  - backend/docker-compose.yml
+
+services:
   backend:
     build: ./backend
     restart: unless-stopped
@@ -25,16 +17,20 @@ services:
       PORT: 3333
       HOST: 0.0.0.0
       LOG_LEVEL: info
-      APP_KEY: ${APP_KEY:-_FwzAzaIrx_1-Y8rhySPVQbDKKZTd0Zd}
+      # No key is stored in the repository. When APP_KEY is not set (in a .env file
+      # next to this one, or in the terminal), the container creates a random key
+      # every time it starts; see backend/Dockerfile.
+      APP_KEY: ${APP_KEY:-}
       APP_URL: http://localhost:3333
       SESSION_DRIVER: cookie
+      # Inside Docker the API reaches the database by its service name and internal port
       DB_HOST: db
       DB_PORT: 5432
       DB_USER: bebe
       DB_PASSWORD: bebe
       DB_DATABASE: bebe
     ports:
-      - "3333:3333"
+      - '3333:3333'
     depends_on:
       db:
         condition: service_healthy
@@ -45,9 +41,6 @@ services:
     environment:
       QCLI_API_URL: http://localhost:3333/api/v1
     ports:
-      - "9000:9000"
+      - '9000:9000'
     depends_on:
       - backend
-
-volumes:
-  pgdata:

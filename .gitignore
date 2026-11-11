@@ -1,0 +1,2 @@
+# Local settings, such as a fixed APP_KEY for docker-compose.yml
+.env

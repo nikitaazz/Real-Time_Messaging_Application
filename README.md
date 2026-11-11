@@ -60,6 +60,18 @@ The API is available at **http://localhost:3333** and PostgreSQL at
 To start the services in the background, add `-d` to the `up` command.
 Use `docker compose logs -f` to follow logs.
 
+The database is the same one that `backend/docker-compose.yml` starts for local
+development, so both setups share their data and can't run twice at once.
+
+No `APP_KEY` is stored in the repository: without one, the API container
+creates a random key each time it starts. To keep a fixed key, put
+`APP_KEY=...` in a `.env` file next to `docker-compose.yml` (it is ignored by
+git); `node ace generate:key --show` in `backend/` prints a new one.
+
+If Docker reports that the container name `bebe-db` is already in use, it was
+created by an older version of this setup. Remove it once with
+`docker rm -f bebe-db`; the data in its volume is not deleted.
+
 ### 1. Install Dependencies
 
 Navigate to the `quasar-project` directory:
