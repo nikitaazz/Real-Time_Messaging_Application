@@ -4,6 +4,23 @@
 
 **Target use cases:** UC1 accounts · UC2 channel list · UC3 sending messages · UC5 `/cancel` · UC6 mentions · UC7 history · UC10 `/list`
 
+## Status on 11 Nov
+
+**All planned tasks are done, and the team went further: all 11 use cases now run on the backend.** The plan below is kept as a record of how the work was split.
+
+| Planned for | Done by | Result |
+|---|---|---|
+| Backend setup, migrations | Zakharii | ✅ |
+| UC1 accounts | Zakharii | ✅ |
+| UC2 + UC5 channels, `/join`, `/cancel`, `/quit` | Zakharii | ✅ (also 30-day expiry) |
+| UC3, UC6, UC7, UC10 | Mykyta | ✅ |
+| Bonus: live messages | Mykyta | ✅ |
+| Not planned for week 9: UC4 `/invite` `/revoke` `/kick`, UC8, UC9, UC11 | Mykyta | ✅ |
+
+**Still open before the lab:** the demo checklist at the bottom has not been run in two browsers yet. The current state of the project is in [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md).
+
+---
+
 **How we split:** each person owns whole use cases, backend *and* frontend. That keeps the amount of code similar, and each of us has to understand both halves of the stack, which the lecturer requires.
 
 ---

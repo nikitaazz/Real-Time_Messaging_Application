@@ -9,6 +9,9 @@
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white)
 ![Pinia](https://img.shields.io/badge/Pinia-FFD859?style=for-the-badge&logo=pinia&logoColor=black)
 ![PWA](https://img.shields.io/badge/PWA-5A0FC8?style=for-the-badge&logo=pwa&logoColor=white)
+![AdonisJS](https://img.shields.io/badge/AdonisJS-5A45FF?style=for-the-badge&logo=adonisjs&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)
+![Socket.IO](https://img.shields.io/badge/Socket.IO-010101?style=for-the-badge&logo=socketdotio&logoColor=white)
 
 <img src="quasar-project/screenshots/main_screen.png" alt="Main screen" width="85%">
 
@@ -19,11 +22,13 @@
 ## ✨ Features
 
 - 📢 **Channels.** Create, join and leave public or private channels; accept or reject invitations
-- ⌨️ **Slash commands.** `/join`, `/invite`, `/revoke`, `/kick`
-- 🏷️ **Mentions** and full chat history
-- ✍️ **Typing indicators**
-- 🟢 **User statuses.** Online, Away, Do Not Disturb
-- 🔔 **Notifications**, including a test notification button
+- ⌨️ **Slash commands.** `/join`, `/invite`, `/revoke`, `/kick`, `/cancel`, `/quit`, `/list`, `/help`
+- 🏷️ **Mentions** with `@nickname`, and the full chat history with infinite scrolling
+- ⚡ **Real time.** New messages, invitations and status changes arrive instantly
+- ✍️ **Typing indicators**, with a live preview of what someone is writing
+- 🟢 **User statuses.** Online, Do Not Disturb, Offline
+- 🔔 **Notifications** while the app is in the background, optionally only for mentions
+- ⏳ **Channel expiry.** A channel without a message for 30 days is removed
 - 🎨 **Themes.** Several color themes
 - 📱 **Installable PWA** with a service worker
 
@@ -31,11 +36,14 @@
 
 | | |
 |---|---|
-| Framework | Vue 3 + Quasar 2 (Vite) |
+| Frontend | Vue 3 + Quasar 2 (Vite), PWA |
+| Backend | AdonisJS 7 (REST API) |
+| Database | PostgreSQL 17, created by migrations |
+| Real time | Socket.IO |
 | Language | TypeScript |
 | State | Pinia |
 | Routing | Vue Router (file-based routes) |
-| Quality | oxlint + oxfmt, `node:test` unit tests |
+| Quality | oxlint + oxfmt and `node:test` (frontend), ESLint + Prettier and Japa tests (backend) |
 
 > Built as a project for the VPWA (Progressive Web Applications) course.
 
@@ -71,6 +79,22 @@ git); `node ace generate:key --show` in `backend/` prints a new one.
 If Docker reports that the container name `bebe-db` is already in use, it was
 created by an older version of this setup. Remove it once with
 `docker rm -f bebe-db`; the data in its volume is not deleted.
+
+### Run for development (without Docker for the app)
+
+Start the database and the API first. The steps are in
+[backend/README.md](backend/README.md); in short, from the `backend` directory:
+
+```bash
+pnpm install
+docker compose up -d       # PostgreSQL only
+cp .env.example .env       # first time only
+node ace generate:key      # first time only
+node ace migration:run
+pnpm run dev               # API on http://localhost:3333
+```
+
+Then start the frontend as described below.
 
 ### 1. Install Dependencies
 
@@ -118,8 +142,10 @@ pnpm run lint:check
 To build the application for production, run:
 
 ```bash
-pnpm exec quasar build
+pnpm exec quasar build -m pwa
 ```
+
+Without `-m pwa`, Quasar builds a plain single-page app without the service worker.
 
 ## 📖 How to Use
 
@@ -143,10 +169,14 @@ View your message history and communicate with other channel members.
 Use commands to manage channels and members, or type a message to send it directly to the chat.
 
 **Available commands:**
-- `/join` — join a channel.
-- `/invite` — invite a user to a channel.
-- `/revoke` — revoke a user's invitation.
-- `/kick` — remove a user from a channel.
+- `/join channelName [private]` — join a public channel, or create a channel if the name is free (you become its admin).
+- `/invite nickName` — invite a user. In a private channel only the admin can invite; the admin's invitation also lifts a ban.
+- `/revoke nickName` — the admin removes a user from a private channel or takes back an invitation.
+- `/kick nickName` — vote to kick a member of a public channel. After 3 different members' votes the user is banned; the admin's kick bans at once.
+- `/cancel` — leave the channel. If the admin leaves, the channel is deleted.
+- `/quit` — the admin closes the channel for everyone.
+- `/list` — show the members of the channel and their status.
+- `/help` — show all commands.
 
 🟢 Channel Members
 View all members of the current channel and check their online status. Easily see who is available to participate in the conversation.
@@ -155,12 +185,12 @@ View all members of the current channel and check their online status. Easily se
 
 🔵 Set Your Status
 Choose your current status to let other users know your availability:
-- **Online** — you are available.
-- **Away** — you are temporarily inactive.
-- **Do Not Disturb** — you prefer not to be disturbed.
+- **Online** — you are available and get notifications.
+- **Do Not Disturb** — you still get messages, but no notifications.
+- **Offline** — you get no messages; when you go back online, your channels catch up automatically.
 
 🟡 Enable Notifications
-Enable notifications to stay informed about new messages and other chat activity.
+Enable notifications to be told about new messages while BeBe is in the background. You can limit them to messages that mention you.
 
 🔴 Test Notification
 Send a test notification to check whether notifications are working correctly.

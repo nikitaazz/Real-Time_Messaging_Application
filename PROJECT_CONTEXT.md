@@ -3,7 +3,7 @@
 > Handoff document for the VPWA semester project.
 > Part 1 is the lecturer's assignment ([kurice/vpwa27 › semestralny-projekt](https://github.com/kurice/vpwa27/tree/main/semestralny-projekt)), translated from Slovak and paraphrased.
 > Part 2 is what our team has built so far, and what is left.
-> Last updated: 2026-11-10.
+> Last updated: 2026-11-11.
 
 ---
 
@@ -114,6 +114,7 @@ Teams of **two**. Both members must contribute a significant, roughly equal shar
 ---
 
 
+
 ## Part 2 — Our project
 
 ### 2.1 Basics
@@ -126,44 +127,59 @@ Teams of **two**. Both members must contribute a significant, roughly equal shar
 | Local path | `D:\VPWA` (frontend in `quasar-project/`, backend in `backend/`) |
 | Frontend | Vue 3, Quasar 2 (Vite), TypeScript, Pinia, file-based Vue Router, PWA service worker, oxlint/oxfmt, `node:test` |
 | Backend | AdonisJS 7, Lucid ORM, VineJS validation, access-token auth, Japa tests, ESLint/Prettier |
-| Database | PostgreSQL 17 in Docker (`backend/docker-compose.yml`, port 5433) |
+| Database | PostgreSQL 17 in Docker (port 5433) |
 | Real time | Socket.IO (`socket.io` on the backend, `socket.io-client` on the frontend) |
 
-**Run the backend (from `backend/`, needs Docker Desktop running):**
+**Whole app in Docker (from the repository root):**
 
 ```bash
+docker compose up --build     # frontend :9000, API :3333, database :5433
+docker compose down
+```
+
+The API runs the migrations when it starts. No `APP_KEY` is stored in the repo: the API container creates a random one at start, or uses `APP_KEY` from a root `.env` (ignored by git).
+
+**Development (backend from `backend/`, frontend from `quasar-project/`):**
+
+```bash
+# backend
 pnpm install
-docker compose up -d          # PostgreSQL on port 5433 (user/password/database: bebe)
+docker compose up -d          # only the database (the same one the root setup uses)
 cp .env.example .env          # first time only
 node ace generate:key         # first time only
 node ace migration:run
 pnpm run dev                  # http://localhost:3333, API under /api/v1
 node ace test                 # uses the separate bebe_test database, port 3334
 pnpm run typecheck && pnpm run lint
-```
 
-**Run the frontend (from `quasar-project/`):**
-
-```bash
+# frontend
 pnpm install
-pnpm exec quasar dev             # dev server with HMR
-pnpm run typecheck               # vue-tsc --noEmit
+pnpm exec quasar dev             # http://localhost:9000
+pnpm run typecheck
 pnpm run lint                    # format + lint (fix)
-node --test tests/*.test.mjs     # channels + notifications tests
-pnpm exec quasar build
+node --test tests/*.test.mjs     # commands, mentions, notifications
+pnpm exec quasar build -m pwa    # PWA build (without -m pwa: plain SPA)
 ```
 
 The frontend reads the API address from `QCLI_API_URL` (see `quasar-project/.env.example`). The default is `http://localhost:3333/api/v1`; the WebSocket uses the same host and port.
 
-### 2.2 Where the work is
+**Docker notes:**
 
-**`main` contains everything.** Start new work from `main`.
+- Both `docker-compose.yml` files use the project name `bebe`, the container `bebe-db` and the volume `bebe-pgdata`. The root file includes `backend/docker-compose.yml`, so there is only one database.
+- "Container name `bebe-db` is already in use" means a container from an older setup exists: `docker rm -f bebe-db` once (the data volume is kept).
+- Docker Compose reads `DB_PORT` from `backend/.env`; change it there if port 5433 is taken.
 
-| Date | Commit | What reached `main` | How |
-|---|---|---|---|
-| 9 Nov | `a82b370` | Backend setup, Docker database, migrations (Zakharii) | Pull request #1, merged by its author |
-| 10 Nov | `a203171` | UC1 accounts (Zakharii) and messages, history, mentions, /list, live messages (Mykyta) | Mykyta's pull request #2 went into `feat/auth` by mistake; `feat/auth` was then pushed to `main` directly |
-| 10 Nov | `4b9cabc` | UC2 channel list, UC5 /cancel, /join and /quit, 30-day expiry (Zakharii) | Pushed to `main` directly, no pull request |
+### 2.2 History of `main`
+
+`main` contains everything. Start new work from `main`.
+
+| Date | Commit | What reached `main` | Who | How |
+|---|---|---|---|---|
+| 9 Nov | `a82b370` | Backend setup, Docker database, migrations | Zakharii | Pull request #1, merged by its author |
+| 10 Nov | `a203171` | UC1 accounts; messages, history, mentions, /list, live messages | Zakharii; Mykyta | Mykyta's pull request #2 went into `feat/auth` by mistake; `feat/auth` was then pushed to `main` |
+| 10 Nov | `4b9cabc` | UC2 channel list, UC5, `/join`, `/quit`, 30-day expiry | Zakharii | Pushed to `main` directly |
+| 11 Nov | `5147901` | UC4 `/invite` `/revoke` `/kick`, UC8, UC9, UC11, mock store removed, Docker for the whole app | Mykyta | Pushed to `main` directly, one commit named "updt" |
+| 11 Nov | `7fcb0b0` | Fix for simultaneous kick votes; one shared Docker database; no `APP_KEY` in the repo | Zakharii | Pushed to `main` directly |
 
 The old branches `feat/backend-setup`, `feat/auth`, `feat/messages` and `feat/channels` are fully contained in `main`.
 
@@ -174,40 +190,51 @@ The old branches `feat/backend-setup`, `feat/auth`, `feat/messages` and `feat/ch
 | Path | Contents |
 |---|---|
 | `start/routes.ts` | All HTTP routes, under `/api/v1` |
-| `start/ws.ts`, `app/services/ws.ts` | Socket.IO server on the same port as HTTP; rooms per channel and per user |
-| `app/controllers/` | `new_account`, `access_tokens`, `profile` (UC1); `channels` (UC2, UC4 /join and /quit, UC5); `channel_messages` (UC3, UC6, UC7); `channel_members` (UC10) |
+| `start/ws.ts`, `app/services/ws.ts` | Socket.IO server on the same port as HTTP; rooms per channel and per user; offline users are kept out of channel rooms (UC9); passes typing events on (UC11) |
+| `app/controllers/new_account_controller.ts`, `access_tokens_controller.ts`, `profile_controller.ts` | UC1 register, login, logout, me; `PATCH /auth/me` for status and mention-only (UC8, UC9) |
+| `app/controllers/channels_controller.ts` | UC2 list, UC4 `/join` and `/quit`, UC5 `/cancel` |
+| `app/controllers/channel_members_controller.ts` | UC10 `/list`; UC4 `/invite`, `/revoke`, `/kick` |
+| `app/controllers/channel_messages_controller.ts` | UC3 sending, UC6 mentions, UC7 history |
 | `app/models/` | `User`, `Channel`, `ChannelUser`, `Kick`, `Message` with relationships |
 | `app/services/channel_access.ts` | `isMember()`, `findJoinedChannel()`: the members-only check used by every channel endpoint |
 | `app/services/channel_expiry.ts` | `isExpired()`, `removeExpiredChannels()`: the 30-day rule (UC2) |
 | `app/services/mentions.ts` | Parses `@nickname` and finds the mentioned channel members |
-| `app/validators/` | `user` (signup, login), `channel` (name rules), `message` (body, history query), `id` |
+| `app/validators/` | `user` (signup, login, profile update), `channel` (channel name, member command), `message` (body, history query), `id` |
 | `app/transformers/` | What the API returns for a user, a channel, a member and a message |
-| `app/exceptions/channel_access_exception.ts` | 404 for an unknown channel; 403 for a non-member, a private channel without invitation, a banned user, or a non-admin using /quit |
+| `app/exceptions/channel_access_exception.ts` | All 403/404/409 errors of the channel endpoints, with an error `code` |
 | `database/migrations/` | 7 migrations (see 2.4) |
 | `database/schema.ts` | **Generated** by `node ace migration:run`. Never edit by hand. |
-| `tests/functional/`, `tests/unit/` | 44 Japa tests: auth, channels, messages, live updates, mentions, ids |
-| `docker-compose.yml`, `docker/init.sql` | Development database, plus the `bebe_test` database |
+| `tests/functional/`, `tests/unit/` | 69 Japa tests (see 2.7) |
+| `docker-compose.yml`, `docker/init.sql` | The database, plus the `bebe_test` database |
+| `Dockerfile` | API image for the full Docker setup |
 
 **Frontend (`quasar-project/`)**
 
 | Path | Contents |
 |---|---|
 | `src/services/api.ts` | `api()` helper on top of `fetch`; keeps the login token; `ApiError` with per-field errors |
-| `src/services/socket.ts` | Socket.IO client: connect with the token; `message:new`, `channel:members`, `channel:deleted`, `channel:subscribe` |
-| `src/boot/realtime.ts` | Connects the socket on login and disconnects on logout |
-| `src/stores/auth.ts` | Register, login, logout, restore the session after a reload |
-| `src/stores/channels.ts` | Channel list, join/create, leave, close from the API. Keeps `chat.channels` in the chat store in step with the backend. |
-| `src/stores/messages.ts` | Sending, paged history, members and live messages from the API, kept per channel |
-| `src/stores/example-store.ts` | The chat store the page reads. **Still mock:** `/invite`, `/revoke`, `/kick`, presence, notifications, typing. Its mock channel and message code is no longer used by the app. |
-| `src/utils/mentions.ts` | Splits a message body into text and highlighted `@nickname` parts |
-| `src/pages/index/login.vue`, `registration.vue` | Auth pages, connected to the backend |
-| `src/pages/index/main.vue` | Chat UI and command line. `/join`, `/cancel`, `/quit`, `/list` and messages go to the backend. |
-| `src/pages/index/settings.vue` | Presence, notification preferences, theme, test controls, logout |
+| `src/services/socket.ts` | Socket.IO client and the list of events (see 2.5) |
+| `src/services/notifications.ts` | Shows browser notifications; uses Quasar `AppVisibility` (UC8) |
+| `src/boot/realtime.ts` | Connects the socket on login, hands every event to its store, opens the channel when a notification is clicked |
+| `src/stores/auth.ts` | Register, login, logout, session restore, status and mention-only settings |
+| `src/stores/channels.ts` | Channel list, selection, unread counters, join/leave/close, invite/revoke/kick, live channel events |
+| `src/stores/messages.ts` | Sending, paged history, members and their status, live messages, catch-up after reconnect |
+| `src/stores/typing.ts` | Who is typing and their live draft (UC11) |
+| `src/utils/commands.ts` | Parses the command line (`/join`, `/invite`, ...) and the `/help` text |
+| `src/utils/mentions.ts` | Splits a message into text and highlighted `@nickname` parts |
+| `src/utils/notifications.ts` | The notification rules (visible, DND, offline, mention-only), kept testable |
+| `src/pages/index/login.vue`, `registration.vue` | Auth pages |
+| `src/pages/index/main.vue` | Chat: channel list, messages, command line, typing bar, member panel, status menu |
+| `src/pages/index/settings.vue` | Status, mention-only, notification permission and a test notification, logout |
 | `src/router/index.ts` | Route guard based on the auth store |
 | `src-pwa/` | PWA manifest and service worker |
+| `tests/` | 21 `node:test` tests: commands, mentions, notifications |
+| `Dockerfile` | Frontend image for the full Docker setup |
 | `docs/data-model.puml`, `DB.pdf` | Phase 1 logical data model |
 
-`.claude/launch.json` in the repo root holds launch settings for the two dev servers.
+The fake `example-store.ts` from Phase 1 has been removed; all data comes from the backend.
+
+Leftovers from the Quasar starter template that nothing uses: `src/components/EssentialLink.vue`, `src/pages/index/second.vue`. They can be deleted.
 
 ### 2.4 Data model (physical, created by migrations)
 
@@ -220,6 +247,8 @@ The old branches `feat/backend-setup`, `feat/auth`, `feat/messages` and `feat/ch
 | `kicks` | channel_id, target_id, kicked_by (unique together): one kick vote per member and target | UC4 |
 | `messages` | channel_id, author_id, body; index on (channel_id, id) for paged history | UC3, UC7 |
 | `mentions` | message_id, user_id | UC6, UC8 |
+
+Nicknames and emails are unique regardless of letter case (checked at signup).
 
 **Changes since the Phase 1 model** (the Phase 2 documentation must justify these):
 
@@ -234,99 +263,109 @@ The old branches `feat/backend-setup`, `feat/auth`, `feat/messages` and `feat/ch
 
 ### 2.5 API
 
-All paths are under `/api/v1`. Successful responses are wrapped in `{ "data": ... }`. Validation errors are `422` with `{ "errors": [{ field, rule, message }] }`. Protected routes need `Authorization: Bearer <token>`.
+All paths are under `/api/v1`. Successful responses are wrapped in `{ "data": ... }`. Errors are `{ "errors": [{ message, field?, rule?, code? }] }`: `422` for validation, `401` without a valid token, `403`/`404`/`409` with a `code` for channel rules. Every route except register and login needs `Authorization: Bearer <token>`.
 
-| Status | Method | Path | Notes |
+| Method | Path | UC | Notes |
 |---|---|---|---|
-| ✅ | POST | `/auth/register` | firstName, lastName, nickName, email, password, passwordConfirmation → `{ user, token }` |
-| ✅ | POST | `/auth/login` | email, password → `{ user, token }`; wrong credentials are `400` |
-| ✅ | POST | `/auth/logout` | Deletes the current token |
-| ✅ | GET | `/auth/me` | The logged-in user |
-| ✅ | GET | `/channels/:id/messages` | `?before=<id>&limit=20` (max 100), newest first, members only |
-| ✅ | POST | `/channels/:id/messages` | `{ body }` (max 2000 chars) → `201`; stores mentions, updates `last_activity_at`, pushes `message:new` |
-| ✅ | GET | `/channels/:id/members` | Joined members with status, owner first, members only |
-| ✅ | GET | `/channels` | My channels and invitations (`state`: invited/joined), invited first, then by name |
-| ✅ | POST | `/channels/join` | name, isPrivate? → `201` when created (caller becomes admin), `200` when joined. Private needs an invitation (`403`); banned users are refused (`403`). Also accepts an invitation. |
-| ✅ | DELETE | `/channels/:id/membership` | `/cancel` → `204`; the admin leaving deletes the channel. Also declines an invitation. |
-| ✅ | DELETE | `/channels/:id` | `/quit` → `204`, admin only (`403` otherwise) |
+| POST | `/auth/register` | 1 | firstName, lastName, nickName, email, password, passwordConfirmation → `{ user, token }` |
+| POST | `/auth/login` | 1 | email, password → `{ user, token }`; wrong credentials are `400` |
+| POST | `/auth/logout` | 1 | Deletes the current token |
+| GET | `/auth/me` | 1 | The logged-in user |
+| PATCH | `/auth/me` | 8, 9 | `{ status?, mentionOnly? }`; pushes the change to the user's other tabs and the new status to their channels |
+| GET | `/channels` | 2 | My channels and invitations (`state`: invited/joined), invited first, then by name |
+| POST | `/channels/join` | 2, 4 | name, isPrivate? → `201` when created (caller becomes admin), `200` when joined. Private needs an invitation; banned users are refused. Also accepts an invitation. |
+| DELETE | `/channels/:id/membership` | 5 | `/cancel` → `204`; the admin leaving deletes the channel. Also declines an invitation. |
+| DELETE | `/channels/:id` | 4 | `/quit` → `204`, admin only |
+| GET | `/channels/:id/messages` | 7 | `?before=<id>&limit=20` (max 100), newest first, members only |
+| POST | `/channels/:id/messages` | 3, 6 | `{ body }` (max 2000 chars) → `201`; stores mentions, updates `last_activity_at` |
+| GET | `/channels/:id/members` | 10 | Joined members with status, admin first, members only |
+| POST | `/channels/:id/invite` | 4 | `{ nickName }`. Private: admin only. Public: any member. Only the admin can invite a banned user, which lifts the ban and forgets the kicks. |
+| POST | `/channels/:id/revoke` | 4 | `{ nickName }`. Private channels, admin only. Removes a member or an invitation; not a ban. |
+| POST | `/channels/:id/kick` | 4 | `{ nickName }`. Public channels. A member's kick is one vote; 3 different votes ban. The admin's kick bans at once. The admin can't be kicked. → `{ banned, votes, votesNeeded }` |
 
-**WebSocket (Socket.IO):** the client connects with the same token (`auth: { token }`). The REST API stays the only way to change data; the socket only pushes events.
-
-| Direction | Event | Meaning |
-|---|---|---|
-| server → client | `ready` | The socket has joined the rooms of the user's channels. Sent after every (re)connect; the client then fetches what it missed. |
-| server → client | `message:new` | A message was posted in one of the user's channels |
-| server → client | `channel:members` | Someone joined or left a channel; clients reload its member list |
-| server → client | `channel:deleted` | A channel stopped existing (closed by its admin, or expired) |
-| client → server | `channel:subscribe` | Join the room of a channel joined after connecting. Membership is checked. |
-
-**Channel names** are stored in lower case without the leading `#`: letters, digits, `-` and `_`, at most 50 characters.
+**Channel names** are stored in lower case without the leading `#`: letters, digits, `-` and `_`, at most 50 characters. Nicknames in commands may start with `@` and ignore letter case.
 
 **30-day expiry** is checked on access: expired channels are deleted before the list is read and before a join, and an expired channel answers `404` everywhere. No background job.
 
-For UC4 (`/invite`, `/revoke`, `/kick`), `ws.addToChannel(userId, channelId)`, `ws.removeFromChannel(userId, channelId)` and `ws.closeChannel(channelId)` already exist.
+**WebSocket (Socket.IO):** the client connects with the same token (`auth: { token }`). Data changes go through the REST API; the only client event that is passed on is `typing`, because drafts are never stored.
+
+| Direction | Event | Meaning |
+|---|---|---|
+| server → user | `ready` | The socket is set up. Sent after every (re)connect and when the user comes back from offline; the client then fetches what it missed. |
+| server → channel | `message:new` | A message was posted (UC3) |
+| server → channel | `channel:members` | Someone joined, left or was removed; clients reload the member list (UC10) |
+| server → channel | `channel:deleted` | The channel stopped existing: `/quit`, the admin's `/cancel`, or expiry (UC2, UC5) |
+| server → channel | `user:status` | A member changed their status (UC9) |
+| server → channel | `typing` | A member's unsent text; empty means they stopped (UC11) |
+| server → user | `channel:invited` | The user was invited (UC2, UC4) |
+| server → user | `channel:removed` | The user was revoked or banned (UC4) |
+| server → user | `user:updated` | The user changed their settings in another tab |
+| client → server | `channel:subscribe` | Join the room of a channel joined after connecting. Membership is checked. |
+| client → server | `typing` | `{ channelId, draft }` on every change of the command line (UC11) |
+
+An offline user's sockets are not in any channel room, so they receive no messages, statuses or typing (UC9).
 
 ### 2.6 Use-case status (on `main`)
 
-| UC | Backend | Frontend | Notes |
-|---|---|---|---|
-| 1 Accounts | ✅ | ✅ | Register, login, logout, session restored after a reload, route guard. |
-| 2 Channel list | ✅ | ✅ | Joined and invited channels from the API, invitations first and highlighted. Create, leave, delete. Public/private. 30-day expiry on access. A closed channel disappears live for its members. |
-| 3 Command line / sending | ✅ | ✅ | Members only. Commands are routed in `runCommand()` in `main.vue`. |
-| 4 Channel commands | 🟡 Partly | 🟡 Partly | `/join [private]` and `/quit` are done. `/invite`, `/revoke`, `/kick` are not on the backend; the command line answers that they are not connected yet. So nobody can be invited to a private channel yet. |
-| 5 /cancel | ✅ | ✅ | Leaves the channel; the admin leaving deletes it. |
-| 6 Mentions | ✅ | ✅ | The server decides who was mentioned (channel members only); the frontend highlights from that list. |
-| 7 History | ✅ | ✅ | Cursor pagination, 20 per page, loaded on scroll up. |
-| 8 Notifications | ❌ | 🟡 Partial | Browser notification when hidden; in-app toast when visible. Live messages from others already count as unread and can raise one. Uses the DOM visibility API, not Quasar AppVisibility. `mention_only` isn't saved to the server yet. |
-| 9 Status | 🟡 Column only | 🟡 Mock | `users.status` exists and is returned with members; no endpoint to change it, no live broadcast. |
-| 10 /list | ✅ | ✅ | Members with status; non-members get 403. |
-| 11 Typing / drafts | ❌ | 🟡 Mock | Local only. Needs socket events. |
-| Live messages | ✅ | ✅ | New messages are pushed over Socket.IO, with catch-up after a reconnect. |
+**All 11 use cases are implemented on the backend and connected in the app.**
 
-**For the week 9 demo:** 7 use cases are on the backend end to end: 1, 2, 3, 5, 6, 7 and 10. The minimum is 6.
+| UC | Status | Notes |
+|---|---|---|
+| 1 Accounts | ✅ | Register, login, logout, session restored after a reload, route guard |
+| 2 Channel list | ✅ | Joined and invited channels, invitations first and highlighted, create/leave/delete, public/private, 30-day expiry, live updates |
+| 3 Command line | ✅ | Messages and commands; `/help` lists the commands |
+| 4 Channel commands | ✅ | `/join [private]`, `/invite`, `/revoke`, `/kick` (3 votes or the admin's kick ban), `/quit`; the admin's `/invite` lifts a ban |
+| 5 /cancel | ✅ | The admin leaving deletes the channel |
+| 6 Mentions | ✅ | The server decides who was mentioned (channel members only); highlighted for that user |
+| 7 History | ✅ | Cursor pagination, 20 per page, loaded on scroll up |
+| 8 Notifications | ✅ | Only while the app is not visible (Quasar `AppVisibility`); sender and the first 100 characters; mention-only setting saved on the server |
+| 9 Status | ✅ | Online/DND/Offline saved on the server and shown live to others. DND: no notifications. Offline: no messages; channels catch up when back online. |
+| 10 /list | ✅ | Members with status, admin first; members only |
+| 11 Typing / drafts | ✅ | "X is typing"; clicking the name shows the live draft. Drafts are never stored. |
 
-**Known gaps after this change**
+**Interpretation to be ready to explain: what a single `/kick` does.** The spec says a member can "vyhodiť" (kick out) another member, and when at least 3 members do it, the user gets a "trvalý" (permanent) ban. Our app treats a regular member's `/kick` as a **vote**: the user stays in the channel until the third vote, then is banned. Another reading is that each kick removes the user, who may rejoin until the third. Decide which one you defend, or ask at the lab.
 
-- The demo buttons in Settings ("test message", "scheduled message") add a message to the old mock list, which the chat page no longer shows for backend channels. The notification itself still appears.
-- `main.vue` still contains the branches for mock channels (`isServerChannel()`); they are no longer reached and can be removed when `example-store.ts` is split.
+Other choices the spec leaves open (document them in Phase 2):
 
-### 2.7 Verified on 10 Nov (on `main`, commit `4b9cabc`)
+- `/kick` works only in public channels; in private channels the admin uses `/revoke`.
+- The admin's kick counts as an immediate ban, not as one vote.
+- `/revoke` is not a ban: the user can be invited again.
+- Besides invitations first, channels are sorted by name.
 
-- Backend: `node ace test` passes, **44 of 44**: 6 auth, 16 channels (list, join, leave, quit, expiry, live updates), 10 messages/history/members, 5 live messages, 7 unit tests (mentions, ids). `pnpm run typecheck` and `pnpm run lint` pass.
-- Frontend: `pnpm run typecheck` passes; `oxlint src` is clean; the 16 existing `node:test` tests pass; `quasar build` succeeds.
-- **Not verified: the pages in a real browser.** The channel list, create dialog and commands were only checked by type check and build. Also not verified: and a browser OS notification (permission was denied in the browser used for testing).
-- Known: `oxlint` reports 16 errors in `quasar-project/tests/*.test.mjs` (promises without `await`/`void`). They predate the backend work.
+### 2.7 Verified on 11 Nov (on `main`, commit `7fcb0b0`)
+
+- **Backend:** `node ace test` passes, **69 of 69**: 6 auth, 16 channels, 13 members (`/invite` `/revoke` `/kick`, including three kicks at the same moment), 10 messages/history/members, 5 live messages, 9 live presence and typing, 3 profile, 7 unit (mentions, ids). `pnpm run typecheck` and `pnpm run lint` pass.
+- **Frontend:** `pnpm run typecheck` passes; `oxlint` is clean; **21 of 21** `node:test` tests pass; `quasar build` and `quasar build -m pwa` succeed.
+- **Docker:** `docker compose up --build` from the root starts all three containers; the API answers and the frontend loads.
+- **Not verified: the app in a real browser** with two users (the checklist in `WEEK9_PLAN.md`), and a browser OS notification.
+- **On Windows,** `pnpm run lint:check` in `quasar-project` reports about 40 files. That is only the line endings git uses on Windows checkouts; the committed files are formatted correctly.
 
 ### 2.8 Remaining work
 
-**Before the week 9 demo**
+**Before the control phase demo (week 9)**
 
-1. **Try everything in a browser** and fix what shows up. Nothing since UC1 has been clicked through in a real browser yet.
-2. **Mykyta reviews `4b9cabc`.** It went to `main` without a review and changes four of his files (`ws.ts`, `channel_access.ts`, `socket.ts`, `realtime.ts`). He should pull `main` before continuing.
-3. **Test together** in two browsers with two users, following the checklist in `WEEK9_PLAN.md`.
+1. **Run the demo checklist** in `WEEK9_PLAN.md` with two users in two browsers, and fix what shows up.
+2. **Agree on the `/kick` interpretation** (see 2.6).
+3. **Review each other's code.** Commits `5147901` and `7fcb0b0` went to `main` without review. Each of you must be able to explain the whole project, including the parts the other one wrote and the parts AI tools wrote.
 
 **For Phase 2 (due 6 Dec)**
 
-1. **UC4:** `/invite`, `/revoke`, `/kick` with the 3-vote ban and admin override, enforced on the server.
-2. **UC9:** endpoint to change status, live broadcast to other members; offline users receive nothing and refetch when back online.
-3. **UC8:** use Quasar `AppVisibility`; save `mention_only` on the server.
-4. **UC11:** typing and draft events over the socket; clicking a nickname shows the live draft.
-5. **Invitations arriving live:** an invited user currently sees the invitation only after a reload or reconnect.
-6. **Remove the mock store** once every use case is on the backend. `login()` and `register()` in `example-store.ts` are already unused.
-7. **PWA check:** installable, service worker caching, behaviour when offline.
-8. **Documentation** (see 1.4): assignment, physical data model with the changes in 2.4, architecture diagram(s), design decisions with a justification per library, at least 5 screenshots.
-9. **README:** the root README still lists an "Away" status and doesn't mention `/quit`, `/cancel` or `/list`. It also has no backend instructions; those are in `backend/README.md`.
-10. **Source citations:** comments with links for any code adapted from external sources.
+1. **Documentation** (see 1.4): assignment, physical data model with the changes in 2.4, architecture diagram(s), design decisions with a justification per library, at least 5 screenshots.
+2. **Screenshots:** the ones in `quasar-project/screenshots/` (used by the README) show the Phase 1 interface; take new ones.
+3. **PWA check:** installable, service worker caching, behaviour when offline.
+4. **Clean up:** delete the unused starter files (see 2.3).
+5. **Source citations:** comments with links for any code adapted from external sources.
+6. **Submission ZIP:** without `node_modules/`, `dist/` and any `.env` file (see 2.9).
 
-**Libraries to justify in the documentation so far:** Socket.IO (server and client) for real-time delivery; `pg` as the PostgreSQL driver. Everything else came with Quasar or the AdonisJS starter kit. HTTP calls use the browser's `fetch`, so no HTTP library was added.
+**Libraries to justify in the documentation:** Socket.IO (server and client) for real-time delivery; `pg` as the PostgreSQL driver. Everything else came with Quasar or the AdonisJS starter kit. HTTP calls use the browser's `fetch`, so no HTTP library was added. Docker is only a convenience for running the app; it is not part of the app.
 
-**Teamwork evidence:** non-merge commits are 29 by Mykyta and 9 by Zakharii (under two git names), but commits differ a lot in size. Hand-written lines since the backend work started (no lockfiles, generated files or starter-kit code): about **2,070 by Zakharii** and **1,840 by Mykyta**, so the amount of code is roughly balanced. Both counts include tests.
+**Teamwork evidence:** the lecturer looks at the repository. Hand-written lines since the backend work started (no lockfiles, generated files or starter-kit code): about **4,700 by Mykyta** and **2,170 by Zakharii**, so Zakharii should take a bigger share of the remaining work, such as the documentation. Commits: 30 by Mykyta and 11 by Zakharii (under two git names).
 
 ### 2.9 Git and workspace notes
 
-- The remote default branch is **`main`**. Local `master` tracks it; update it with `git pull` before branching.
-- Planned workflow: feature branches (`feat/...`) merged into `main` through pull requests reviewed by the other person. **In practice no change has been reviewed yet:** both pull requests were merged by their own author, and the last two changes were pushed to `main` directly. The spec requires code review between team members and the lecturer looks at the repository, so review at least the next changes properly.
-- When opening a pull request, check that its base branch is `main` (pull request #2 accidentally targeted `feat/auth`).
+- The remote default branch is **`main`**. Local `master` tracks it; update it with `git pull` before working.
+- Planned workflow: feature branches (`feat/...`) merged into `main` through pull requests reviewed by the other person. **In practice no change has been reviewed yet:** both pull requests were merged by their own author, and the last four changes were pushed to `main` directly. The spec requires code review between team members.
+- Use descriptive commit messages; one large commit named "updt" says nothing to the lecturer.
 - `repo.txt` and `Zakharii_Okseniuk_Mykyta_Nosenko.zip` in the repo root are submission files, ignored locally through `.git/info/exclude`. Don't delete or commit them.
-- `backend/.env` holds local settings and is ignored by git. `backend/.env.example` matches the Docker database.
-- The submission ZIP must not contain `node_modules/` or `dist/`.
+- `backend/.env` holds local settings, including database passwords, and is ignored by git. `backend/.env.example` matches the Docker database. A root `.env` (for a fixed `APP_KEY`) is ignored too.
+- The submission ZIP must not contain `node_modules/`, `dist/` or any `.env` file.
