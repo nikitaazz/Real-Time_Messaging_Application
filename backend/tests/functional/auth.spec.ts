@@ -44,6 +44,13 @@ test.group('UC1 accounts', (group) => {
       .json({ ...account, nickName: 'other' })
     sameEmail.assertStatus(422)
     sameEmail.assertBodyContains({ errors: [{ field: 'email', rule: 'database.unique' }] })
+
+    // "@ED" and "@ed" address the same user, so the nickname is taken in any letter case
+    const otherCase = await client
+      .post('/api/v1/auth/register')
+      .json({ ...account, nickName: 'ED', email: 'other@example.com' })
+    otherCase.assertStatus(422)
+    otherCase.assertBodyContains({ errors: [{ field: 'nickName', rule: 'database.unique' }] })
   })
 
   test('nickname may only contain letters, digits and underscores', async ({ client }) => {

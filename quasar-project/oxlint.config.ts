@@ -32,6 +32,15 @@ export default defineConfig({
 
   rules: {},
 
+  overrides: [
+    {
+      // node:test's test() returns a promise that the test runner itself waits for
+      // https://nodejs.org/api/test.html#testname-options-fn
+      files: ["tests/**"],
+      rules: { "typescript/no-floating-promises": "off" }
+    }
+  ],
+
   env: {
     builtin: true
   }

@@ -242,22 +242,20 @@ body {
   color: inherit !important;
 }
 
-.in-app-notification {
-  position: fixed;
-  z-index: 30;
-  top: 16px;
-  right: 16px;
-  width: min(420px, calc(100vw - 32px));
-  border: 1px solid var(--line);
-  border-left: 4px solid var(--accent);
-  border-radius: 12px;
-  background: var(--surface) !important;
-  color: var(--ink) !important;
-  box-shadow: 0 12px 36px #0003;
+/* The answer to /help has one command per line */
+.command-banner .q-banner__content {
+  white-space: pre-line;
 }
 
-.in-app-notification .q-banner__content,
-.in-app-notification .q-btn {
+/* UC9: shown while the user's status is offline */
+.offline-banner {
+  background: rgba(242, 192, 55, 0.16) !important;
+  color: var(--ink) !important;
+  border-bottom: 1px solid rgba(242, 192, 55, 0.5);
+}
+
+.offline-banner .q-banner__content,
+.offline-banner .q-btn {
   color: inherit !important;
 }
 
@@ -293,8 +291,23 @@ body {
   text-transform: capitalize;
 }
 
+/* UC6: a message that mentions the logged-in user */
 .message-addressed .message-bubble {
   border-left: 3px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface-muted));
+}
+
+.message-bubble {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.message-bubble mark {
+  padding: 0 3px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--accent) 30%, transparent);
+  color: inherit;
+  font-weight: 600;
 }
 
 .composer {
@@ -303,15 +316,86 @@ body {
   border-top: 1px solid var(--line);
 }
 
+/* UC11: "ed is typing..." above the command line */
 .typing,
 .draft-preview {
   padding: 0 7%;
 }
 
+.typing {
+  padding-bottom: 6px;
+  color: var(--muted);
+}
+
+.typing-name {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.typing-name-active {
+  color: var(--ink);
+}
+
+/* UC11: the text a member is writing, shown after a click on their name */
 .draft-preview {
-  color: #68738a;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.draft-preview-text {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 12px;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  background: var(--surface-muted);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.draft-preview-body {
   font-style: italic;
+  white-space: pre-wrap;
+}
+
+/* UC9: the user's own status in the channel panel, opens a menu */
+.status-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--sidebar-muted);
+  font: inherit;
   font-size: 12px;
+  cursor: pointer;
+}
+
+.status-button:hover {
+  color: #f8f5ef;
+}
+
+.account-details {
+  display: grid;
+  gap: 4px;
+}
+
+.account-details span {
+  display: inline-block;
+  min-width: 90px;
+}
+
+.member-name {
+  color: var(--muted);
 }
 
 .member-status {

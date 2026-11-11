@@ -1,132 +1,80 @@
 import assert from "node:assert/strict";
-import { afterEach, beforeEach, test } from "node:test";
-import { createPinia, setActivePinia } from "pinia";
-import { useChatStore } from "../src/stores/example-store.ts";
+import { test } from "node:test";
+import {
+  notificationBlocker,
+  notificationText,
+  PREVIEW_LENGTH
+} from "../src/utils/notifications.ts";
 
-const globals = ["document", "navigator", "Notification"];
-const originalDescriptors = globals.map(name =>
-  Object.getOwnPropertyDescriptor(globalThis, name)
-);
-let store;
-let desktopAlerts;
+/** A message that does raise a notification; each test changes one thing. */
+const hiddenAndAllowed = {
+  appVisible: false,
+  status: "online",
+  mentionOnly: false,
+  mentionsUser: false,
+  access: "granted"
+};
 
-beforeEach(() => {
-  setActivePinia(createPinia());
-  store = useChatStore();
-  store.login("alex@example.com", "alex");
-  desktopAlerts = [];
-  Object.defineProperty(globalThis, "document", {
-    configurable: true,
-    value: { visibilityState: "visible" }
+test("a message raises a notification while the app is not visible", () => {
+  assert.equal(notificationBlocker(hiddenAndAllowed), null);
+});
+
+test("no notification while the app is visible", () => {
+  assert.match(
+    notificationBlocker({ ...hiddenAndAllowed, appVisible: true }),
+    /visible/
+  );
+});
+
+test("no notification in the DND and Offline statuses", () => {
+  assert.match(
+    notificationBlocker({ ...hiddenAndAllowed, status: "dnd" }),
+    /DND/
+  );
+  assert.match(
+    notificationBlocker({ ...hiddenAndAllowed, status: "offline" }),
+    /Offline/
+  );
+});
+
+test("with 'mentions only', just the messages that mention the user notify", () => {
+  const mentionOnly = { ...hiddenAndAllowed, mentionOnly: true };
+  assert.match(notificationBlocker(mentionOnly), /does not mention you/);
+  assert.equal(
+    notificationBlocker({ ...mentionOnly, mentionsUser: true }),
+    null
+  );
+});
+
+test("no notification without the browser's permission", () => {
+  for (const access of ["default", "denied"])
+    assert.match(
+      notificationBlocker({ ...hiddenAndAllowed, access }),
+      /not allowed/
+    );
+  assert.match(
+    notificationBlocker({ ...hiddenAndAllowed, access: "unsupported" }),
+    /does not support/
+  );
+});
+
+test("the notification names the sender and the channel", () => {
+  assert.deepEqual(notificationText("ed", "general", "Lunch at noon?"), {
+    title: "ed in #general",
+    body: "Lunch at noon?"
   });
-  Object.defineProperty(globalThis, "navigator", {
-    configurable: true,
-    value: {}
-  });
-  Object.defineProperty(globalThis, "Notification", {
-    configurable: true,
-    value: class {
-      static permission = "granted";
-      constructor(title, options) {
-        desktopAlerts.push({ title, options });
-      }
-    }
-  });
 });
 
-afterEach(() => {
-  globals.forEach((name, index) => {
-    const descriptor = originalDescriptors[index];
-    if (descriptor) Object.defineProperty(globalThis, name, descriptor);
-    else delete globalThis[name];
-  });
+test("a long message is cut to a part of it", () => {
+  const { body } = notificationText("ed", "general", "word ".repeat(100));
+  assert.ok(body.length <= PREVIEW_LENGTH + 1);
+  assert.ok(body.endsWith("…"));
+  assert.ok("word ".repeat(100).startsWith(body.slice(0, -1)));
 });
 
-test("visible demo messages update chat and the in-app banner only", () => {
-  const before = store.selectedChannel.messages.length;
-  assert.equal(store.receiveTestMessage(), true);
-  const message = store.selectedChannel.messages.at(-1);
-  assert.equal(store.selectedChannel.messages.length, before + 1);
-  assert.equal(store.inAppNotification.body, message.body);
-  assert.equal(store.inAppNotification.channelId, "general");
-  assert.equal(desktopAlerts.length, 0);
-});
-
-test("hidden demo messages keep a banner as well as sending a desktop alert", () => {
-  document.visibilityState = "hidden";
-  store.receiveTestMessage();
-  const message = store.selectedChannel.messages.at(-1);
-  assert.equal(desktopAlerts.length, 1);
-  assert.equal(desktopAlerts[0].options.body, `${message.author}: ${message.body}`);
-  document.visibilityState = "visible";
-  assert.equal(store.inAppNotification.body, message.body);
-});
-
-test("blocked desktop permission does not lose the message or in-app banner", () => {
-  document.visibilityState = "hidden";
-  Notification.permission = "denied";
-  store.receiveTestMessage();
-  assert.equal(desktopAlerts.length, 0);
-  assert.equal(store.inAppNotification.body, store.selectedChannel.messages.at(-1).body);
-});
-
-test("delayed messages keep their original channel and cannot be queued twice", context => {
-  context.mock.timers.enable({ apis: ["setTimeout"] });
-  const general = store.selectedChannel;
-  const before = general.messages.length;
-  assert.equal(store.scheduleTestMessage(), true);
-  assert.equal(store.scheduleTestMessage(), false);
-  store.selectChannel("project");
-  context.mock.timers.tick(4999);
-  assert.equal(general.messages.length, before);
-  context.mock.timers.tick(1);
-  assert.equal(general.messages.length, before + 1);
-  assert.equal(store.inAppNotification.channelId, general.id);
-  assert.equal(store.testMessageQueued, false);
-});
-
-test("a scheduled message cannot leak into a new login session", context => {
-  context.mock.timers.enable({ apis: ["setTimeout"] });
-  store.scheduleTestMessage();
-  store.logout();
-  store.login("other@example.com", "other");
-  const before = store.selectedChannel.messages.length;
-  context.mock.timers.tick(5000);
-  assert.equal(store.selectedChannel.messages.length, before);
-  assert.equal(store.inAppNotification, null);
-});
-
-test("notification preferences suppress alerts without hiding chat messages", () => {
-  const before = store.selectedChannel.messages.length;
-  store.notifications = false;
-  store.receiveTestMessage();
-  store.notifications = true;
-  store.setPresence("DND");
-  store.receiveTestMessage();
-  assert.equal(store.selectedChannel.messages.length, before + 2);
-  assert.equal(store.inAppNotification, null);
-  assert.equal(desktopAlerts.length, 0);
-});
-
-test("offline delayed messages appear when the user returns online", context => {
-  context.mock.timers.enable({ apis: ["setTimeout"] });
-  const before = store.selectedChannel.messages.length;
-  store.scheduleTestMessage();
-  store.setPresence("Offline");
-  context.mock.timers.tick(5000);
-  assert.equal(store.selectedChannel.messages.length, before);
-  assert.equal(store.pendingMessages.length, 1);
-  store.setPresence("Online");
-  assert.equal(store.selectedChannel.messages.length, before + 1);
-  assert.equal(store.inAppNotification.body, store.selectedChannel.messages.at(-1).body);
-});
-
-test("the demo mentions the recipient and never masquerades as their own message", () => {
-  store.login("nikita@example.com", "nikita");
-  store.mentionOnly = true;
-  store.receiveTestMessage();
-  const message = store.selectedChannel.messages.at(-1);
-  assert.notEqual(message.author, store.user.nickName);
-  assert.equal(message.mentions.includes("nikita"), true);
-  assert.equal(store.inAppNotification.body, message.body);
+test("line breaks in a message become spaces", () => {
+  assert.equal(
+    notificationText("ed", "general", "first\n\nsecond").body,
+    "first second"
+  );
 });

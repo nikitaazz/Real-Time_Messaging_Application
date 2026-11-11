@@ -1,11 +1,16 @@
 import { acceptHMRUpdate, defineStore } from "pinia";
 import { api, ApiError, getToken, setToken } from "@/services/api";
 import { useChannelsStore } from "@/stores/channels";
-import {
-  useChatStore,
-  type Member,
-  type Presence
-} from "@/stores/example-store";
+
+/** UC9: the states a user can set for themselves. */
+export type Status = "online" | "dnd" | "offline";
+
+/** How a status is shown to users. */
+export const STATUS_LABELS: Record<Status, string> = {
+  online: "Online",
+  dnd: "DND",
+  offline: "Offline"
+};
 
 /** The logged-in user, as returned by the backend (UserTransformer). */
 export interface AuthUser {
@@ -14,7 +19,9 @@ export interface AuthUser {
   lastName: string;
   nickName: string;
   email: string;
-  status: "online" | "dnd" | "offline";
+  /** UC9: shown to the other members of the user's channels */
+  status: Status;
+  /** UC8: notify only for messages that mention the user */
   mentionOnly: boolean;
 }
 
@@ -31,48 +38,21 @@ interface SessionResponse {
   data: { user: AuthUser; token: string };
 }
 
-const presence: Record<AuthUser["status"], Presence> = {
-  online: "Online",
-  dnd: "DND",
-  offline: "Offline"
-};
-
-/**
- * Bridges the real account into the chat store, which the chat page reads,
- * and loads the user's channels from the backend (UC2). The features that are
- * not on the backend yet (presence, notifications, typing) still live there.
- */
-function startChatSession(user: AuthUser) {
-  const chat = useChatStore();
-  const member: Member = {
-    id: String(user.id),
-    name: user.nickName,
-    firstName: user.firstName,
-    lastName: user.lastName,
-    nickName: user.nickName,
-    status: presence[user.status]
-  };
-  chat.startSession(member);
-  chat.$patch({
-    email: user.email,
-    firstName: user.firstName,
-    lastName: user.lastName,
-    nickName: user.nickName,
-    mentionOnly: user.mentionOnly,
-    // startSession() fills in demo channels; the real list comes from the backend
-    channels: [],
-    selectedChannelId: ""
+/** UC2: fetches the channel list of the user who just logged in. */
+function loadChannels() {
+  const channels = useChannelsStore();
+  void channels.load().catch(reason => {
+    channels.notice =
+      reason instanceof ApiError
+        ? reason.message
+        : "Your channels could not be loaded.";
   });
-  void useChannelsStore()
-    .load()
-    .catch(reason => {
-      chat.commandHint =
-        reason instanceof ApiError
-          ? reason.message
-          : "Your channels could not be loaded.";
-    });
 }
 
+/**
+ * UC1 accounts: register, log in, log out, and staying logged in after a reload.
+ * Also the user's own settings: status (UC9) and "mentions only" (UC8).
+ */
 export const useAuthStore = defineStore("auth", {
   state: () => ({
     user: null as AuthUser | null,
@@ -80,7 +60,9 @@ export const useAuthStore = defineStore("auth", {
     restored: false
   }),
   getters: {
-    isLoggedIn: state => state.user !== null
+    isLoggedIn: state => state.user !== null,
+    /** UC9: an offline user receives no messages until they go online again. */
+    isOffline: state => state.user?.status === "offline"
   },
   actions: {
     async register(payload: RegisterPayload) {
@@ -114,7 +96,7 @@ export const useAuthStore = defineStore("auth", {
       try {
         const { data } = await api<{ data: AuthUser }>("/auth/me");
         this.user = data;
-        startChatSession(data);
+        loadChannels();
       } catch {
         // Invalid token: api() already removed it. Server offline: the user logs in again.
       }
@@ -123,13 +105,31 @@ export const useAuthStore = defineStore("auth", {
       setToken(token);
       this.user = user;
       this.restored = true;
-      startChatSession(user);
+      loadChannels();
     },
     clearSession() {
       setToken(null);
       this.user = null;
       useChannelsStore().$reset();
-      useChatStore().logout();
+    },
+
+    /**
+     * UC8, UC9: changes the user's status or the "mentions only" setting.
+     * The server saves it and tells the members of the user's channels.
+     * After a change from offline to another status the server sends "ready",
+     * which makes this app fetch everything it missed (see src/boot/realtime.ts).
+     */
+    async updateSettings(changes: { status?: Status; mentionOnly?: boolean }) {
+      const { data } = await api<{ data: AuthUser }>("/auth/me", {
+        method: "PATCH",
+        body: changes
+      });
+      this.user = data;
+    },
+
+    /** Pushed by the server: the user changed their settings in another tab. */
+    onUpdated(user: AuthUser) {
+      if (this.user?.id === user.id) this.user = user;
     }
   }
 });

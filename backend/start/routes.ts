@@ -29,6 +29,8 @@ router
           .group(() => {
             router.post('logout', [controllers.AccessTokens, 'destroy']).as('logout')
             router.get('me', [controllers.Profile, 'show']).as('me')
+            // UC8, UC9: the user's own status and notification setting
+            router.patch('me', [controllers.Profile, 'update']).as('updateMe')
           })
           .use(middleware.auth())
       })
@@ -51,6 +53,7 @@ router
      * One channel.
      * UC5 /cancel (leave) and UC4 /quit (close, admin only).
      * UC3, UC6, UC7, UC10: its messages and members. Members only.
+     * UC4 /invite, /revoke and /kick: each takes { nickName }.
      */
     router
       .group(() => {
@@ -59,6 +62,9 @@ router
         router.get('messages', [controllers.ChannelMessages, 'index']).as('messages.index')
         router.post('messages', [controllers.ChannelMessages, 'store']).as('messages.store')
         router.get('members', [controllers.ChannelMembers, 'index']).as('members.index')
+        router.post('invite', [controllers.ChannelMembers, 'invite']).as('members.invite')
+        router.post('revoke', [controllers.ChannelMembers, 'revoke']).as('members.revoke')
+        router.post('kick', [controllers.ChannelMembers, 'kick']).as('members.kick')
       })
       .prefix('channels/:id')
       .where('id', router.matchers.number())

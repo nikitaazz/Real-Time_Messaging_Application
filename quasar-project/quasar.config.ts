@@ -107,7 +107,8 @@ export default defineConfig((/* ctx */) => {
       // directives: [],
 
       // Quasar plugins
-      plugins: ["Dialog"]
+      // Dialog: confirmations. AppVisibility: is the app's window or tab visible (UC8).
+      plugins: ["Dialog", "AppVisibility"]
     },
 
     // animations: 'all', // --- includes all animations

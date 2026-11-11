@@ -7,20 +7,22 @@
         'mobile-conversation-open': isMobile && mobileConversationVisible
       }"
     >
+      <!-- UC2: the channel list -->
       <aside class="channel-panel">
         <div class="row items-center justify-between q-mb-md">
-          <div
-            ><div class="text-h6 text-weight-bold">BeBe</div
-            ><div class="text-caption text-grey-6">Your conversations</div></div
-          >
+          <div>
+            <div class="text-h6 text-weight-bold">BeBe</div>
+            <div class="text-caption text-grey-6">Your conversations</div>
+          </div>
           <q-btn
             round
             flat
             icon="add"
             aria-label="Create channel"
             @click="channelDialog = true"
-            ><q-tooltip>Create channel</q-tooltip></q-btn
           >
+            <q-tooltip>Create channel</q-tooltip>
+          </q-btn>
         </div>
         <q-input
           v-model="search"
@@ -38,68 +40,91 @@
             v-for="channel in filteredChannels"
             :key="channel.id"
             clickable
-            :active="channel.id === store.selectedChannelId"
+            :active="channel.id === channels.selectedId"
             active-class="channel-active"
-            :class="{ 'channel-invited': isInvited(channel) }"
+            :class="{ 'channel-invited': channel.state === 'invited' }"
             @click="openChannel(channel)"
           >
-            <q-item-section avatar
-              ><q-icon :name="channel.private ? 'lock' : 'tag'" size="18px"
-            /></q-item-section>
+            <q-item-section avatar>
+              <q-icon :name="channel.isPrivate ? 'lock' : 'tag'" size="18px" />
+            </q-item-section>
+            <q-item-section>
+              <q-item-label>{{ channel.name }}</q-item-label>
+              <q-item-label caption>{{ channelCaption(channel) }}</q-item-label>
+            </q-item-section>
             <q-item-section
-              ><q-item-label>{{ channel.name }}</q-item-label
-              ><q-item-label caption>{{
-                isInvited(channel)
-                  ? "Invitation - select to join"
-                  : channel.description
-              }}</q-item-label></q-item-section
-            >
-            <q-item-section side
-              ><q-btn
-                flat
-                round
-                dense
-                :icon="isInvited(channel) ? 'close' : 'more_vert'"
-                :aria-label="
-                  isInvited(channel) ? 'Decline invitation' : 'Channel actions'
-                "
-                @click.stop="
-                  isInvited(channel)
-                    ? leaveChannel(channel.id)
-                    : channelMenu(channel.id)
-                "
-                ><q-tooltip>{{
-                  isInvited(channel) ? "Decline invitation" : "Leave channel"
-                }}</q-tooltip></q-btn
-              ></q-item-section
-            >
-            <q-item-section
-              v-if="store.unreadCounts[channel.id]"
+              v-if="channels.unread[channel.id]"
               side
               class="channel-unread"
             >
               <q-badge
                 color="primary"
-                :label="store.unreadCounts[channel.id]"
+                :label="channels.unread[channel.id]"
                 rounded
               />
             </q-item-section>
+            <q-item-section side>
+              <q-btn
+                flat
+                round
+                dense
+                :icon="channel.state === 'invited' ? 'close' : 'more_vert'"
+                :aria-label="channelActionLabel(channel)"
+                @click.stop="
+                  channel.state === 'invited'
+                    ? leaveChannel(channel)
+                    : confirmLeave(channel)
+                "
+              >
+                <q-tooltip>{{ channelActionLabel(channel) }}</q-tooltip>
+              </q-btn>
+            </q-item-section>
           </q-item>
+          <div
+            v-if="channels.loaded && !filteredChannels.length"
+            class="text-caption text-grey-6 q-pa-sm"
+          >
+            No channels here. Create one with + or type /join channelName.
+          </div>
         </q-list>
         <q-space />
         <q-separator class="q-my-md" />
         <div class="row items-center no-wrap">
-          <q-avatar color="primary" text-color="white" size="36px">{{
-            initials
-          }}</q-avatar>
-          <div class="q-ml-sm ellipsis"
-            ><div class="text-weight-medium">{{
-              store.user?.name ?? "Guest"
-            }}</div
-            ><div class="text-caption text-grey-6">{{
-              store.user?.status ?? "Offline"
-            }}</div></div
-          >
+          <q-avatar color="primary" text-color="white" size="36px">
+            {{ initials }}
+          </q-avatar>
+          <div class="q-ml-sm ellipsis">
+            <div class="text-weight-medium ellipsis">
+              {{ auth.user?.nickName }}
+            </div>
+            <!-- UC9: the user's own status, changed from this menu or in Settings -->
+            <button
+              type="button"
+              class="status-button"
+              aria-label="Change status"
+            >
+              <span :class="`status-dot status-${status}`" />
+              {{ STATUS_LABELS[status] }}
+              <q-icon name="expand_more" size="14px" />
+              <q-menu anchor="top left" self="bottom left">
+                <q-list dense style="min-width: 150px">
+                  <q-item
+                    v-for="option in statusOptions"
+                    :key="option"
+                    v-close-popup
+                    clickable
+                    :active="option === status"
+                    @click="setStatus(option)"
+                  >
+                    <q-item-section side>
+                      <span :class="`status-dot status-${option}`" />
+                    </q-item-section>
+                    <q-item-section>{{ STATUS_LABELS[option] }}</q-item-section>
+                  </q-item>
+                </q-list>
+              </q-menu>
+            </button>
+          </div>
           <q-btn
             class="q-ml-auto"
             flat
@@ -128,138 +153,185 @@
             aria-label="Back to conversations"
             @click="mobileConversationVisible = false"
           />
-          <div
-            ><div class="text-h6">{{
-              selectedChannel
-                ? `# ${selectedChannel.name}`
-                : "No channel selected"
-            }}</div
-            ><div class="text-caption text-grey-6">{{
-              selectedChannel?.description
-            }}</div></div
-          >
+          <div>
+            <div class="text-h6">
+              {{ selected ? `# ${selected.name}` : "No channel selected" }}
+            </div>
+            <div v-if="selected" class="text-caption text-grey-6">
+              {{ channelCaption(selected) }}
+            </div>
+          </div>
           <div class="row items-center q-gutter-xs">
             <q-btn
               flat
               round
               icon="group"
-              :disable="!selectedChannel"
+              :disable="!selected"
+              aria-label="Members"
               @click="membersOpen = !membersOpen"
-              ><q-tooltip>Members</q-tooltip></q-btn
             >
+              <q-tooltip>Members</q-tooltip>
+            </q-btn>
             <q-btn
               flat
               round
               icon="logout"
-              :disable="!selectedChannel"
-              @click="leave"
-              ><q-tooltip>{{
-                selectedChannel?.ownerId === store.user?.id
-                  ? "Delete channel"
-                  : "Leave channel"
-              }}</q-tooltip></q-btn
+              :disable="!selected"
+              :aria-label="selected ? channelActionLabel(selected) : 'Leave'"
+              @click="selected && confirmLeave(selected)"
             >
+              <q-tooltip v-if="selected">
+                {{ channelActionLabel(selected) }}
+              </q-tooltip>
+            </q-btn>
           </div>
         </header>
-        <q-banner v-if="store.commandHint" dense class="command-banner"
-          >Command: {{ store.commandHint }}
-          <template #action
-            ><q-btn
-              flat
-              label="Clear"
-              @click="store.commandHint = ''" /></template
-        ></q-banner>
+
+        <!-- UC9: an offline user gets no messages -->
+        <q-banner v-if="auth.isOffline" dense class="offline-banner">
+          <template #avatar><q-icon name="cloud_off" /></template>
+          Your status is Offline, so new messages are not delivered to you. Go
+          online to bring your channels up to date.
+          <template #action>
+            <q-btn flat label="Go online" @click="setStatus('online')" />
+          </template>
+        </q-banner>
+        <!-- The answer to the last command, or an error -->
+        <q-banner
+          v-if="channels.notice"
+          dense
+          class="command-banner"
+          role="status"
+        >
+          {{ channels.notice }}
+          <template #action>
+            <q-btn flat label="Clear" @click="channels.notice = ''" />
+          </template>
+        </q-banner>
+
+        <!-- UC7: the message history, older pages are loaded while scrolling up -->
         <div ref="messageScroll" class="message-scroll" @scroll="onScroll">
-          <div v-if="loading" class="text-center text-caption text-grey q-pa-sm"
-            >Loading older messages...</div
-          >
-          <q-btn
-            v-else-if="canLoadMore"
-            flat
-            color="primary"
-            label="Load earlier messages"
-            class="full-width q-mb-md"
-            :disable="!selectedChannel"
-            @click="loadHistory"
-          />
-          <div
-            v-else-if="selectedChannel"
-            class="text-center text-caption text-grey-6 q-pa-sm"
-            >This is the beginning of #{{ selectedChannel.name }}</div
-          >
-          <div v-if="!selectedChannel" class="text-center text-grey-7 q-pa-lg">
+          <div v-if="!selected" class="text-center text-grey-7 q-pa-lg">
             Join or create a channel to start chatting.
           </div>
-          <div
-            v-for="message in visibleMessages"
-            :key="message.id"
-            class="message-row"
-            :class="{ 'message-addressed': message.addressedToMe }"
-          >
-            <q-avatar size="34px" color="secondary" text-color="white">{{
-              message.author.slice(0, 1)
-            }}</q-avatar>
-            <div class="message-content">
-              <div
-                ><strong>{{ message.author }}</strong
-                ><span class="text-caption text-grey-6 q-ml-sm">{{
-                  message.time
-                }}</span></div
-              >
-              <div class="message-bubble">
-                <template v-for="(part, index) in message.parts" :key="index">
-                  <mark v-if="part.mention">{{ part.text }}</mark>
-                  <template v-else>{{ part.text }}</template>
-                </template>
+          <template v-else>
+            <div
+              v-if="loadingOlder"
+              class="text-center text-caption text-grey q-pa-sm"
+            >
+              Loading older messages...
+            </div>
+            <q-btn
+              v-else-if="canLoadMore"
+              flat
+              color="primary"
+              label="Load earlier messages"
+              class="full-width q-mb-md"
+              @click="loadHistory"
+            />
+            <div
+              v-else-if="historyLoaded"
+              class="text-center text-caption text-grey-6 q-pa-sm"
+            >
+              This is the beginning of #{{ selected.name }}
+            </div>
+            <div
+              v-for="message in visibleMessages"
+              :key="message.id"
+              class="message-row"
+              :class="{ 'message-addressed': message.addressedToMe }"
+            >
+              <q-avatar size="34px" color="secondary" text-color="white">
+                {{ message.author.slice(0, 1).toUpperCase() }}
+              </q-avatar>
+              <div class="message-content">
+                <div>
+                  <strong>{{ message.author }}</strong>
+                  <span class="text-caption text-grey-6 q-ml-sm">
+                    {{ message.time }}
+                  </span>
+                </div>
+                <!-- UC6: "@nickname" parts are highlighted; rendered as text, never as HTML -->
+                <div class="message-bubble">
+                  <template v-for="(part, index) in message.parts" :key="index">
+                    <mark v-if="part.mention">{{ part.text }}</mark>
+                    <template v-else>{{ part.text }}</template>
+                  </template>
+                </div>
               </div>
             </div>
-          </div>
+          </template>
         </div>
-        <div v-if="store.typing" class="typing text-caption text-grey-7"
-          >You are typing...</div
-        >
-        <div class="draft-preview" v-if="store.draft"
-          >Your draft: {{ store.draft }}</div
-        >
+
+        <!-- UC11: who is writing; a click on a name shows the text as it is typed -->
+        <div v-if="watchedTypist" class="draft-preview" role="status">
+          <div class="draft-preview-text">
+            <strong>{{ watchedTypist.nickName }}</strong> is writing:
+            <span class="draft-preview-body">{{ watchedTypist.draft }}</span>
+          </div>
+          <q-btn
+            flat
+            round
+            dense
+            size="sm"
+            icon="close"
+            aria-label="Hide the text being written"
+            @click="watchedTypistId = null"
+          />
+        </div>
+        <div v-if="typists.length" class="typing text-caption" role="status">
+          <template v-for="(typist, index) in typists" :key="typist.userId">
+            <span v-if="index > 0">, </span>
+            <button
+              type="button"
+              class="typing-name"
+              :class="{
+                'typing-name-active': typist.userId === watchedTypistId
+              }"
+              :title="`See what ${typist.nickName} is writing`"
+              @click="toggleDraftPreview(typist.userId)"
+            >
+              {{ typist.nickName }}
+            </button>
+          </template>
+          {{ typists.length === 1 ? " is typing..." : " are typing..." }}
+        </div>
+
+        <!-- UC3: the command line, always at the bottom of the window -->
         <footer class="composer">
           <q-input
             v-model="composer"
             outlined
             dense
-            :placeholder="
-              composer.startsWith('/')
-                ? '/join #channel or /list'
-                : selectedChannel
-                  ? 'Write a message...'
-                  : 'Use /join channelName to get started'
-            "
+            maxlength="2000"
+            :placeholder="composerPlaceholder"
+            aria-label="Message or command"
             @keydown.enter.exact.prevent="send"
-            @update:model-value="onDraft"
           >
             <template #prepend><q-icon name="chat_bubble_outline" /></template>
-            <template #append
-              ><q-btn
+            <template #append>
+              <q-btn
                 flat
                 round
                 icon="send"
                 color="primary"
-                :disable="
-                  !composer.trim() ||
-                  (!selectedChannel && !composer.trim().startsWith('/'))
-                "
+                aria-label="Send"
+                :disable="!canSend"
                 @click="send"
-            /></template>
+              />
+            </template>
           </q-input>
-          <div class="text-caption text-grey-6 q-mt-xs"
-            >Commands: /join /invite /revoke /kick /quit /cancel /list</div
-          >
+          <div class="text-caption text-grey-6 q-mt-xs">
+            Commands: /join /invite /revoke /kick /quit /cancel /list /help
+          </div>
         </footer>
       </section>
 
+      <!-- UC10: the members of the open channel with their status (UC9) -->
       <aside v-if="membersOpen" class="member-panel">
         <div class="row items-center justify-between q-mb-md">
-          <div class="text-subtitle1 text-weight-bold"
-            >Members
+          <div class="text-subtitle1 text-weight-bold">
+            Members
             <span class="text-caption text-grey-6">({{ members.length }})</span>
           </div>
           <q-btn
@@ -273,20 +345,30 @@
           />
         </div>
         <q-item v-for="member in members" :key="member.id" class="q-px-none">
-          <q-item-section avatar
-            ><q-avatar size="32px" color="secondary" text-color="white">{{
-              member.name.slice(0, 1)
-            }}</q-avatar></q-item-section
-          >
-          <q-item-section
-            >{{ member.name
-            }}<q-item-label caption class="member-status"
-              ><span
-                :class="`status-dot status-${member.status.toLowerCase()}`"
+          <q-item-section avatar>
+            <q-avatar size="32px" color="secondary" text-color="white">
+              {{ member.nickName.slice(0, 1).toUpperCase() }}
+            </q-avatar>
+          </q-item-section>
+          <q-item-section>
+            <q-item-label>
+              {{ member.nickName }}
+              <q-badge
+                v-if="member.id === selected?.ownerId"
+                outline
+                color="primary"
+                label="admin"
+                class="q-ml-xs"
               />
-              {{ member.status }}</q-item-label
-            ></q-item-section
-          >
+            </q-item-label>
+            <q-item-label caption class="member-name">
+              {{ member.firstName }} {{ member.lastName }}
+            </q-item-label>
+            <q-item-label caption class="member-status">
+              <span :class="`status-dot status-${member.status}`" />
+              {{ STATUS_LABELS[member.status] }}
+            </q-item-label>
+          </q-item-section>
         </q-item>
       </aside>
     </div>
@@ -301,39 +383,35 @@
           class="q-mb-md"
           :error="!!channelError"
           :error-message="channelError"
-          @update:model-value="channelError = ''"
           autofocus
+          @update:model-value="channelError = ''"
+          @keydown.enter.exact.prevent="createChannel"
         />
         <q-toggle v-model="privateChannel" label="Private channel" />
-        <div class="row justify-end q-gutter-sm q-mt-md"
-          ><q-btn flat label="Cancel" v-close-popup /><q-btn
+        <div class="row justify-end q-gutter-sm q-mt-md">
+          <q-btn v-close-popup flat label="Cancel" />
+          <q-btn
             color="primary"
             label="Create"
             :loading="creatingChannel"
             :disable="!newChannel.trim()"
             @click="createChannel"
-        /></div>
+          />
+        </div>
       </q-card>
     </q-dialog>
   </q-page>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { useQuasar } from "quasar";
-import {
-  useChatStore,
-  type Channel,
-  type Member,
-  type Presence
-} from "@/stores/example-store";
-import {
-  isServerChannel,
-  useMessagesStore,
-  type ChannelMember
-} from "@/stores/messages";
-import { useChannelsStore } from "@/stores/channels";
+import { STATUS_LABELS, useAuthStore, type Status } from "@/stores/auth";
+import { useChannelsStore, type ServerChannel } from "@/stores/channels";
+import { useMessagesStore, type ServerMessage } from "@/stores/messages";
+import { useTypingStore } from "@/stores/typing";
 import { ApiError } from "@/services/api";
+import { COMMAND_HELP, parseCommand } from "@/utils/commands";
 import { splitMentions, type MessagePart } from "@/utils/mentions";
 import { useTheme } from "@/composables/useTheme";
 
@@ -348,11 +426,13 @@ interface MessageView {
   addressedToMe: boolean;
 }
 
-const store = useChatStore();
-const messages = useMessagesStore();
+const auth = useAuthStore();
 const channels = useChannelsStore();
+const messages = useMessagesStore();
+const typing = useTypingStore();
 const { isDark, toggleTheme } = useTheme();
 const $q = useQuasar();
+
 const isMobile = computed(() => $q.screen.width <= 640);
 const search = ref("");
 const composer = ref("");
@@ -363,75 +443,68 @@ const privateChannel = ref(false);
 const creatingChannel = ref(false);
 const membersOpen = ref($q.screen.width > 900);
 const mobileConversationVisible = ref(false);
-const loading = ref(false);
+const loadingOlder = ref(false);
 const messageScroll = ref<HTMLElement | null>(null);
-const filteredChannels = computed(() =>
-  store.channels
-    .filter(
-      channel =>
-        (channel.members.some(person => person.id === store.user?.id) ||
-          isInvited(channel)) &&
-        channel.name.includes((search.value ?? "").toLowerCase())
-    )
-    .sort(
-      (first, second) => Number(isInvited(second)) - Number(isInvited(first))
-    )
-);
-const selectedChannel = computed(() => store.selectedChannel);
-/** Id of the selected channel when it comes from the backend, otherwise null (mock channel). */
-const serverChannelId = computed(() =>
-  isServerChannel(selectedChannel.value?.id)
-    ? (selectedChannel.value?.id ?? null)
-    : null
-);
-const visibleMessages = computed<MessageView[]>(() =>
-  serverChannelId.value
-    ? messages
-        .messagesFor(serverChannelId.value)
-        .map(message => toMessageView(message, formatTime(message.createdAt)))
-    : (selectedChannel.value?.messages ?? []).map(message =>
-        toMessageView(message, message.time)
-      )
-);
-const canLoadMore = computed(() =>
-  serverChannelId.value ? messages.hasMoreFor(serverChannelId.value) : true
-);
-const members = computed<Member[]>(() =>
-  serverChannelId.value
-    ? messages.membersFor(serverChannelId.value).map(toMember)
-    : store.onlineMembers
-);
+/** UC11: the member whose unsent text is shown, chosen by clicking their name. */
+const watchedTypistId = ref<number | null>(null);
+
+const statusOptions: Status[] = ["online", "dnd", "offline"];
+const status = computed<Status>(() => auth.user?.status ?? "offline");
 const initials = computed(() =>
-  (store.user?.name ?? "G").slice(0, 1).toUpperCase()
+  (auth.user?.nickName ?? "?").slice(0, 1).toUpperCase()
 );
 
-function isInvited(channel: Channel) {
-  return (
-    channel.invitedUserIds.includes(store.user?.id ?? "") &&
-    !channel.members.some(person => person.id === store.user?.id)
-  );
+/** The open channel; null when the user has not joined any channel. */
+const selected = computed(() => channels.selected);
+const filteredChannels = computed(() =>
+  channels.sorted.filter(channel =>
+    channel.name.includes((search.value ?? "").trim().toLowerCase())
+  )
+);
+const visibleMessages = computed<MessageView[]>(() =>
+  selected.value
+    ? messages.messagesFor(selected.value.id).map(toMessageView)
+    : []
+);
+const historyLoaded = computed(
+  () => !!selected.value && !!messages.histories[selected.value.id]?.loaded
+);
+const canLoadMore = computed(
+  () =>
+    historyLoaded.value &&
+    !!selected.value &&
+    messages.hasMoreFor(selected.value.id)
+);
+const members = computed(() =>
+  selected.value ? messages.membersFor(selected.value.id) : []
+);
+const typists = computed(() =>
+  selected.value ? typing.typistsIn(selected.value.id) : []
+);
+const watchedTypist = computed(
+  () =>
+    typists.value.find(typist => typist.userId === watchedTypistId.value) ??
+    null
+);
+const isCommand = computed(() => composer.value.trim().startsWith("/"));
+const canSend = computed(
+  () => !!composer.value.trim() && (isCommand.value || !!selected.value)
+);
+const composerPlaceholder = computed(() => {
+  if (!selected.value) return "Use /join channelName to get started";
+  if (auth.isOffline) return "You are offline. Go online to send messages.";
+  return `Message #${selected.value.name}, or type / for a command`;
+});
+
+function channelCaption(channel: ServerChannel) {
+  if (channel.state === "invited") return "Invitation - select to join";
+  const type = channel.isPrivate ? "Private channel" : "Public channel";
+  return channel.ownerId === auth.user?.id ? `${type} · admin` : type;
 }
-async function openChannel(channel: Channel) {
-  // Selecting an invitation accepts it (UC2)
-  if (isInvited(channel)) await joinChannel(channel.name);
-  else store.selectChannel(channel.id);
-  if (store.selectedChannelId === channel.id)
-    mobileConversationVisible.value = true;
-}
-const presenceLabel: Record<ChannelMember["status"], Presence> = {
-  online: "Online",
-  dnd: "DND",
-  offline: "Offline"
-};
-function toMember(member: ChannelMember): Member {
-  return {
-    id: String(member.id),
-    name: member.nickName,
-    firstName: member.firstName,
-    lastName: member.lastName,
-    nickName: member.nickName,
-    status: presenceLabel[member.status]
-  };
+/** What the button next to a channel does (UC2): decline, leave, or delete as the admin. */
+function channelActionLabel(channel: ServerChannel) {
+  if (channel.state === "invited") return "Decline invitation";
+  return channel.ownerId === auth.user?.id ? "Delete channel" : "Leave channel";
 }
 function formatTime(iso: string) {
   const date = new Date(iso);
@@ -443,22 +516,20 @@ function formatTime(iso: string) {
     ? time
     : `${date.toLocaleDateString()} ${time}`;
 }
-function toMessageView(
-  message: { id: number; author: string; body: string; mentions?: string[] },
-  time: string
-): MessageView {
-  const mentions = message.mentions ?? [];
-  const myNickName = store.user?.nickName.toLowerCase();
+function toMessageView(message: ServerMessage): MessageView {
+  const myNickName = auth.user?.nickName.toLowerCase();
   return {
     id: message.id,
     author: message.author,
-    time,
-    parts: splitMentions(message.body, mentions),
-    addressedToMe: mentions.some(name => name.toLowerCase() === myNickName)
+    time: formatTime(message.createdAt),
+    parts: splitMentions(message.body, message.mentions),
+    addressedToMe: message.mentions.some(
+      name => name.toLowerCase() === myNickName
+    )
   };
 }
 function showError(error: unknown) {
-  store.commandHint =
+  channels.notice =
     error instanceof ApiError ? error.message : "Something went wrong.";
 }
 function scrollToBottom() {
@@ -466,11 +537,12 @@ function scrollToBottom() {
   if (scrollElement) scrollElement.scrollTop = scrollElement.scrollHeight;
 }
 
-// Opening a backend channel loads its newest messages (UC7) and members (UC10)
+// Opening a channel loads its newest messages (UC7) and members (UC10)
 watch(
-  serverChannelId,
+  () => selected.value?.id,
   async channelId => {
-    if (!channelId) return;
+    watchedTypistId.value = null;
+    if (channelId === undefined) return;
     try {
       await messages.open(channelId);
     } catch (error) {
@@ -481,7 +553,7 @@ watch(
 );
 
 // Switching to another channel shows its newest messages
-watch(() => selectedChannel.value?.id, scrollToBottom, { flush: "post" });
+watch(() => selected.value?.id, scrollToBottom, { flush: "post" });
 
 // A new message at the end (loaded, sent or received live) scrolls down,
 // unless the user has scrolled up to read older messages
@@ -501,34 +573,52 @@ watch(
   }
 );
 
-/** UC10: /list shows the members of the current channel with their status. */
-async function listMembers(channelId: string) {
+// UC11: every change of the command line is sent to the members of the open channel
+watch([() => selected.value?.id ?? null, composer], ([channelId, text]) =>
+  typing.setDraft(channelId, text)
+);
+onBeforeUnmount(() => typing.setDraft(null, ""));
+
+function toggleDraftPreview(userId: number) {
+  watchedTypistId.value = watchedTypistId.value === userId ? null : userId;
+}
+
+/** UC9: changes the user's own status. */
+async function setStatus(value: Status) {
   try {
-    const list = await messages.loadMembers(channelId);
-    store.commandHint = `Members of #${selectedChannel.value?.name}: ${list
-      .map(member => `${member.nickName} (${presenceLabel[member.status]})`)
-      .join(", ")}`;
-    membersOpen.value = true;
+    await auth.updateSettings({ status: value });
   } catch (error) {
     showError(error);
   }
 }
+
+async function openChannel(channel: ServerChannel) {
+  // Selecting an invitation accepts it (UC2)
+  if (channel.state === "invited") await joinChannel(channel.name);
+  else channels.select(channel.id);
+  if (channels.selectedId === channel.id)
+    mobileConversationVisible.value = true;
+}
+
+/** UC3: the command line sends a message, or runs a command when the text starts with "/". */
 async function send() {
   const text = composer.value.trim();
   if (!text) return;
-  composer.value = "";
-  store.setTyping("");
   if (text.startsWith("/")) {
+    composer.value = "";
     await runCommand(text);
     return;
   }
-  if (!serverChannelId.value) {
-    store.sendMessage(text);
+
+  const channel = selected.value;
+  if (!channel) return;
+  if (auth.isOffline) {
+    channels.notice = "You are offline. Go online to send messages.";
     return;
   }
-  // UC3: send to the backend; on failure keep the text so it isn't lost
+  composer.value = "";
   try {
-    await messages.send(serverChannelId.value, text);
+    await messages.send(channel.id, text);
     await nextTick();
     scrollToBottom();
   } catch (error) {
@@ -537,43 +627,33 @@ async function send() {
     showError(error);
   }
 }
-function onDraft(value: string | number | null) {
-  store.setTyping(String(value ?? ""));
-}
+
 /** UC7: loads older messages and keeps the messages on screen in place. */
 async function loadHistory() {
   const scrollElement = messageScroll.value;
-  if (
-    !scrollElement ||
-    loading.value ||
-    !selectedChannel.value ||
-    !canLoadMore.value
-  )
+  const channel = selected.value;
+  if (!scrollElement || !channel || loadingOlder.value || !canLoadMore.value)
     return;
   const previousHeight = scrollElement.scrollHeight;
   const previousTop = scrollElement.scrollTop;
-  loading.value = true;
+  loadingOlder.value = true;
   try {
-    if (serverChannelId.value) await messages.loadOlder(serverChannelId.value);
-    else {
-      // Mock channels: simulate network delay
-      await new Promise(resolve => window.setTimeout(resolve, 350));
-      store.loadHistory();
-    }
+    await messages.loadOlder(channel.id);
     await nextTick();
+    // The new messages were added above: move down by their height
     if (messageScroll.value)
       messageScroll.value.scrollTop =
         previousTop + messageScroll.value.scrollHeight - previousHeight;
   } catch (error) {
     showError(error);
   } finally {
-    loading.value = false;
+    loadingOlder.value = false;
   }
 }
 function onScroll(event: Event) {
-  if ((event.target as HTMLElement).scrollTop < 20 && !loading.value)
-    loadHistory();
+  if ((event.target as HTMLElement).scrollTop < 20) void loadHistory();
 }
+
 /** Readable text for an error of the channel endpoints. */
 function channelErrorText(error: unknown) {
   if (error instanceof ApiError && error.status === 422)
@@ -587,25 +667,23 @@ function channelErrorText(error: unknown) {
 async function joinChannel(name: string, isPrivate = false) {
   try {
     const channel = await channels.join(name, isPrivate);
-    store.commandHint = "";
+    channels.notice = "";
     mobileConversationVisible.value = true;
     return channel;
   } catch (error) {
-    store.commandHint = channelErrorText(error);
+    channels.notice = channelErrorText(error);
     return null;
   }
 }
 /** UC5: /cancel, leaving from the list, and declining an invitation. */
-async function leaveChannel(id: string) {
-  const channel = store.channels.find(item => item.id === id);
-  if (!channel) return;
-  const isOwner = channel.ownerId === store.user?.id;
+async function leaveChannel(channel: ServerChannel) {
+  const isOwner = channel.ownerId === auth.user?.id;
   try {
-    await channels.leave(id);
+    await channels.leave(channel.id);
+    if (channel.state === "invited") channels.notice = "";
     // The server deletes a channel when its admin leaves
-    store.commandHint = isInvited(channel)
-      ? ""
-      : isOwner
+    else
+      channels.notice = isOwner
         ? `#${channel.name} was closed.`
         : `You left #${channel.name}.`;
   } catch (error) {
@@ -613,63 +691,87 @@ async function leaveChannel(id: string) {
   }
 }
 /** UC4: /quit, the admin closes the channel for everyone. */
-async function closeChannel(id: string) {
-  const channel = store.channels.find(item => item.id === id);
-  if (!channel) return;
+async function closeChannel(channel: ServerChannel) {
   try {
-    await channels.close(id);
-    store.commandHint = `#${channel.name} was closed.`;
+    await channels.close(channel.id);
+    channels.notice = `#${channel.name} was closed.`;
   } catch (error) {
     showError(error);
   }
 }
+/** UC10: /list shows the members of the open channel with their status. */
+async function listMembers(channel: ServerChannel) {
+  const list = await messages.loadMembers(channel.id);
+  channels.notice = `Members of #${channel.name}: ${list
+    .map(member => `${member.nickName} (${STATUS_LABELS[member.status]})`)
+    .join(", ")}`;
+  membersOpen.value = true;
+}
+
 /**
- * UC3: commands typed into the command line.
- * /join, /cancel, /quit and /list are handled by the backend.
+ * UC3, UC4, UC5, UC10: runs a command typed into the command line.
+ * The server checks who may do what; its answer is shown in the notice line.
  */
 async function runCommand(text: string) {
-  const [command, ...args] = text.split(/\s+/);
-  const current = serverChannelId.value;
-  const needsChannel = "Select a channel first.";
+  const command = parseCommand(text);
+  if (command.name === "invalid") {
+    channels.notice = command.message;
+    return;
+  }
+  if (command.name === "help") {
+    channels.notice = COMMAND_HELP.join("\n");
+    return;
+  }
+  if (command.name === "join") {
+    await joinChannel(command.channel, command.isPrivate);
+    return;
+  }
 
-  switch (command) {
-    case "/join": {
-      const [name, visibility] = args;
-      if (
-        !name ||
-        args.length > 2 ||
-        (visibility && visibility !== "private")
-      ) {
-        store.commandHint = "Use /join channelName [private].";
-        return;
+  // Every other command is about the open channel
+  const channel = selected.value;
+  if (!channel) {
+    channels.notice = "Select a channel first.";
+    return;
+  }
+  try {
+    switch (command.name) {
+      case "cancel":
+        await leaveChannel(channel);
+        break;
+      case "quit":
+        await closeChannel(channel);
+        break;
+      case "list":
+        await listMembers(channel);
+        break;
+      case "invite":
+        await channels.invite(channel.id, command.nickName);
+        channels.notice = `${command.nickName} was invited to #${channel.name}.`;
+        break;
+      case "revoke":
+        await channels.revoke(channel.id, command.nickName);
+        channels.notice = `${command.nickName} was removed from #${channel.name}.`;
+        break;
+      case "kick": {
+        const result = await channels.kick(channel.id, command.nickName);
+        channels.notice = result.banned
+          ? `${result.nickName} was banned from #${channel.name}.`
+          : `Your kick of ${result.nickName} was counted: ${result.votes} of the ${result.votesNeeded} members needed for a ban.`;
+        break;
       }
-      await joinChannel(name, visibility === "private");
-      return;
     }
-    case "/cancel":
-      if (current) await leaveChannel(current);
-      else store.commandHint = needsChannel;
-      return;
-    case "/quit":
-      if (current) await closeChannel(current);
-      else store.commandHint = needsChannel;
-      return;
-    case "/list":
-      if (current) await listMembers(current);
-      else store.commandHint = needsChannel;
-      return;
-    case "/invite":
-    case "/revoke":
-    case "/kick":
-      store.commandHint = `${command} is not connected to the server yet.`;
-      return;
-    default:
-      store.commandHint = `Unknown command ${command}.`;
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 422)
+      channels.notice =
+        "That is not a valid nickname (letters, digits and _ only).";
+    else showError(error);
   }
 }
+
 async function createChannel() {
   // The dialog accepts spaces; channel names are a single word
   const name = newChannel.value.trim().replace(/\s+/g, "-");
+  if (!name || creatingChannel.value) return;
   creatingChannel.value = true;
   try {
     await channels.join(name, privateChannel.value);
@@ -679,27 +781,26 @@ async function createChannel() {
   } finally {
     creatingChannel.value = false;
   }
-  store.commandHint = "";
+  channels.notice = "";
   channelError.value = "";
   newChannel.value = "";
   privateChannel.value = false;
   channelDialog.value = false;
   mobileConversationVisible.value = true;
 }
-function channelMenu(id: string) {
-  const channel = store.channels.find(item => item.id === id);
-  if (!channel) return;
-  const isOwner = channel.ownerId === store.user?.id;
+
+/** UC2: leaving or deleting a channel from the list asks first. */
+function confirmLeave(channel: ServerChannel) {
+  const isOwner = channel.ownerId === auth.user?.id;
   $q.dialog({
-    title: "Channel actions",
-    message: isOwner ? `Delete #${channel.name}?` : `Leave #${channel.name}?`,
+    title: isOwner ? "Delete channel" : "Leave channel",
+    message: isOwner
+      ? `Delete #${channel.name}? It will be closed for all its members.`
+      : `Leave #${channel.name}?`,
     cancel: true,
     persistent: true
   }).onOk(() => {
-    void (isOwner ? closeChannel(id) : leaveChannel(id));
+    void (isOwner ? closeChannel(channel) : leaveChannel(channel));
   });
-}
-function leave() {
-  if (selectedChannel.value) channelMenu(selectedChannel.value.id);
 }
 </script>

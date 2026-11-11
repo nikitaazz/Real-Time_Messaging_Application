@@ -21,3 +21,17 @@ export const joinChannelValidator = vine.create({
   /** Only used when the channel doesn't exist yet and is created. */
   isPrivate: vine.boolean().optional(),
 })
+
+/**
+ * UC4: body of "/invite nickName", "/revoke nickName" and "/kick nickName".
+ * A leading "@" is accepted, so "/invite @ed" works like "/invite ed".
+ * The same nickname rules as at signup (see validators/user.ts).
+ */
+export const memberCommandValidator = vine.create({
+  nickName: vine
+    .string()
+    .parse((value) => (typeof value === 'string' ? value.trim().replace(/^@/, '') : value))
+    .minLength(2)
+    .maxLength(30)
+    .regex(/^[A-Za-z0-9_]+$/),
+})

@@ -124,7 +124,7 @@ export default class ChannelsController {
     }
 
     // Live messages of this channel now also go to this user (all open tabs)
-    ws.addToChannel(user.id, channel.id)
+    ws.addToChannel(user, channel.id)
     if (!created) announceMembersChanged(channel.id)
 
     await membership.load('channel')

@@ -41,6 +41,25 @@
 
 ## 🚀 How to Run
 
+### Run the full project with Docker
+
+From the repository root, run:
+
+```bash
+docker compose up --build
+```
+
+Open **http://localhost:9000**. Docker Compose starts the Quasar frontend,
+AdonisJS API, and PostgreSQL database; the API applies database migrations
+when it starts. Stop the services with `docker compose down`. Database data
+is kept in a Docker volume; `docker compose down -v` deletes it.
+
+The API is available at **http://localhost:3333** and PostgreSQL at
+**localhost:5433**.
+
+To start the services in the background, add `-d` to the `up` command.
+Use `docker compose logs -f` to follow logs.
+
 ### 1. Install Dependencies
 
 Navigate to the `quasar-project` directory:

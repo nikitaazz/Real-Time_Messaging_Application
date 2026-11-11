@@ -1,0 +1,53 @@
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: bebe
+      POSTGRES_PASSWORD: bebe
+      POSTGRES_DB: bebe
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./backend/docker/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bebe -d bebe"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      PORT: 3333
+      HOST: 0.0.0.0
+      LOG_LEVEL: info
+      APP_KEY: ${APP_KEY:-_FwzAzaIrx_1-Y8rhySPVQbDKKZTd0Zd}
+      APP_URL: http://localhost:3333
+      SESSION_DRIVER: cookie
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: bebe
+      DB_PASSWORD: bebe
+      DB_DATABASE: bebe
+    ports:
+      - "3333:3333"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build: ./quasar-project
+    restart: unless-stopped
+    environment:
+      QCLI_API_URL: http://localhost:3333/api/v1
+    ports:
+      - "9000:9000"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:

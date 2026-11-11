@@ -11,94 +11,97 @@
       />
     </div>
     <q-card class="settings-card q-pa-lg">
-      <div class="row items-center justify-between q-mb-lg"
-        ><div
-          ><div class="text-h4">Settings</div
-          ><div class="text-grey-7">Manage presence and notifications</div></div
-        ><q-btn flat icon="arrow_back" label="Back to chat" to="/main"
-      /></div>
+      <div class="row items-center justify-between q-mb-lg">
+        <div>
+          <div class="text-h4">Settings</div>
+          <div class="text-grey-7">Your account, status and notifications</div>
+        </div>
+        <q-btn flat icon="arrow_back" label="Back to chat" to="/main" />
+      </div>
       <q-separator />
-      <div class="text-subtitle1 text-weight-medium q-mt-lg">Presence</div>
+
+      <!-- UC1: the account -->
+      <div class="text-subtitle1 text-weight-medium q-mt-lg">Account</div>
+      <div v-if="auth.user" class="account-details q-mt-sm">
+        <div>
+          <span class="text-grey-7">Name</span>
+          {{ auth.user.firstName }} {{ auth.user.lastName }}
+        </div>
+        <div>
+          <span class="text-grey-7">Nickname</span>
+          @{{ auth.user.nickName }}
+        </div>
+        <div>
+          <span class="text-grey-7">Email</span>
+          {{ auth.user.email }}
+        </div>
+      </div>
+
+      <!-- UC9: the status the other members see -->
+      <div class="text-subtitle1 text-weight-medium q-mt-lg">Status</div>
       <q-option-group
-        v-model="presence"
-        :options="presenceOptions"
+        v-model="status"
+        :options="statusOptions"
         type="radio"
         inline
         class="q-mt-sm"
+        :disable="saving"
       />
+      <div class="notification-permission">{{ statusHint }}</div>
+
+      <!-- UC8: notifications -->
       <div class="text-subtitle1 text-weight-medium q-mt-lg">Notifications</div>
-      <q-toggle
-        v-model="store.notifications"
-        label="Message notifications when online"
-      />
-      <q-toggle v-model="store.mentionOnly" label="Only notify for mentions" />
-      <div class="notification-permission q-mt-md">
-        Browser permission:
-        <strong>{{ notificationPermission }}</strong>
+      <div class="notification-permission q-mt-sm">
+        BeBe notifies you about new messages while its window or tab is not
+        visible. Browser permission:
+        <strong>{{ access }}</strong>
       </div>
+      <q-toggle
+        v-model="mentionOnly"
+        label="Only notify me about messages that mention me (@nickname)"
+        :disable="saving"
+      />
       <div class="row q-gutter-sm q-mt-sm">
         <q-btn
           color="primary"
           outline
           :label="
-            notificationPermission === 'denied'
+            access === 'denied'
               ? 'Blocked by browser settings'
-              : 'Enable browser notifications'
+              : access === 'granted'
+                ? 'Browser notifications are allowed'
+                : 'Allow browser notifications'
           "
-          :disable="!canRequestPermission"
-          @click="requestNotificationPermission"
+          :disable="access !== 'default'"
+          @click="requestAccess"
         />
         <q-btn
           color="primary"
           outline
-          label="Send test notification now"
-          :disable="
-            !store.notifications ||
-            store.user?.status !== 'Online' ||
-            !store.selectedChannel
-          "
-          @click="sendTestNotificationNow"
-        />
-        <q-btn
-          color="primary"
-          label="Add test message and open chat"
-          :disable="store.user?.status !== 'Online' || !store.selectedChannel"
-          @click="addTestMessageAndOpenChat"
-        />
-        <q-btn
-          color="primary"
-          label="Schedule demo incoming message (5s)"
-          :disable="
-            testQueued ||
-            store.user?.status !== 'Online' ||
-            !store.selectedChannel
-          "
-          @click="scheduleTestMessage"
+          label="Show a test notification"
+          :disable="access !== 'granted'"
+          @click="showTestNotification"
         />
       </div>
-      <div
-        v-if="notificationPermission === 'denied'"
-        class="notification-permission q-mt-sm"
-      >
+      <div v-if="access === 'denied'" class="notification-permission q-mt-sm">
         Notifications are blocked for this site. Change BeBe's notification
         permission in your browser or device settings.
       </div>
-      <q-banner v-if="notificationMessage" class="settings-info-banner q-mt-md">
-        {{ notificationMessage }}
+      <q-banner
+        v-if="message"
+        class="settings-info-banner q-mt-md"
+        role="status"
+      >
+        {{ message }}
       </q-banner>
       <div
-        v-if="store.lastNotificationStatus"
+        v-if="messages.lastNotificationResult"
         class="notification-permission q-mt-sm"
       >
-        Latest incoming-message result:
-        {{ store.lastNotificationStatus }}
+        The latest message raised no notification:
+        {{ messages.lastNotificationResult }}
       </div>
-      <q-banner class="settings-info-banner q-mt-lg"
-        >Incoming demo messages appear in chat and in BeBe's notification banner.
-        Desktop notifications are delivered only while BeBe is hidden. Allow
-        browser notifications, keep your status Online, and switch tabs after
-        scheduling the demo message.</q-banner
-      >
+
       <q-btn
         color="negative"
         outline
@@ -113,89 +116,107 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
-import { useChatStore, type Presence } from "@/stores/example-store";
-import { useAuthStore } from "@/stores/auth";
+import { STATUS_LABELS, useAuthStore, type Status } from "@/stores/auth";
+import { useMessagesStore } from "@/stores/messages";
+import { ApiError } from "@/services/api";
+import { notificationAccess, showNotification } from "@/services/notifications";
+import type { NotificationAccess } from "@/utils/notifications";
 import { useTheme } from "@/composables/useTheme";
 
 const router = useRouter();
-const store = useChatStore();
 const auth = useAuthStore();
+const messages = useMessagesStore();
 const { isDark, toggleTheme } = useTheme();
-const testQueued = computed(() => store.testMessageQueued);
-const notificationMessage = ref("");
-const notificationPermission = ref<NotificationPermission | "unsupported">(
-  "unsupported"
-);
-const canRequestPermission = computed(
-  () => notificationPermission.value === "default"
-);
-const presence = computed({
-  get: () => store.user?.status ?? "Offline",
-  set: (value: Presence) => store.setPresence(value)
-});
-const presenceOptions = ["Online", "DND", "Offline"].map(value => ({
-  label: value,
+
+/** Feedback for the last thing done on this page. */
+const message = ref("");
+const saving = ref(false);
+const access = ref<NotificationAccess>("unsupported");
+
+const statusOptions = (["online", "dnd", "offline"] as const).map(value => ({
+  label: STATUS_LABELS[value],
   value
 }));
-function refreshNotificationPermission() {
-  notificationPermission.value =
-    typeof window !== "undefined" && "Notification" in window
-      ? window.Notification.permission
-      : "unsupported";
+const statusHints: Record<Status, string> = {
+  online: "You receive messages and notifications.",
+  dnd: "Do not disturb: you receive messages, but no notifications.",
+  offline:
+    "You receive no messages. When you go online again, your channels are brought up to date."
+};
+const statusHint = computed(() => statusHints[auth.user?.status ?? "offline"]);
+
+/** UC8, UC9: saves a setting on the server; the stored value is what the page shows. */
+async function save(changes: { status?: Status; mentionOnly?: boolean }) {
+  saving.value = true;
+  message.value = "";
+  try {
+    await auth.updateSettings(changes);
+  } catch (error) {
+    message.value =
+      error instanceof ApiError
+        ? error.message
+        : "The setting could not be saved.";
+  } finally {
+    saving.value = false;
+  }
 }
-async function requestNotificationPermission() {
-  if (notificationPermission.value === "unsupported") {
-    notificationMessage.value =
-      "This browser does not support desktop notifications.";
+const status = computed({
+  get: () => auth.user?.status ?? "offline",
+  set: (value: Status) => void save({ status: value })
+});
+const mentionOnly = computed({
+  get: () => auth.user?.mentionOnly ?? false,
+  set: (value: boolean) => void save({ mentionOnly: value })
+});
+
+function refreshAccess() {
+  access.value = notificationAccess();
+}
+/** The browser asks the user whether BeBe may show notifications. */
+async function requestAccess() {
+  if (access.value === "unsupported") {
+    message.value = "This browser does not support notifications.";
     return;
   }
   try {
-    notificationPermission.value =
-      await window.Notification.requestPermission();
-    notificationMessage.value =
-      notificationPermission.value === "granted"
-        ? "Browser notifications are enabled."
-        : notificationPermission.value === "denied"
+    access.value = await Notification.requestPermission();
+    message.value =
+      access.value === "granted"
+        ? "Browser notifications are allowed."
+        : access.value === "denied"
           ? "Notifications are blocked. Allow them in your browser or device settings."
-          : "Browser notifications were not enabled.";
+          : "Browser notifications were not allowed.";
   } catch (error) {
-    notificationMessage.value =
-      "The browser could not request notification permission. Check the site and device settings.";
+    message.value =
+      "The browser could not ask for permission. Check the site and device settings.";
     console.error("BeBe could not request notification permission.", error);
   }
 }
-function sendTestNotificationNow() {
-  if (!store.notifications) {
-    notificationMessage.value =
-      "Turn on message notifications in BeBe settings first.";
-    return;
-  }
-  const channel = store.selectedChannel;
-  if (!channel || !store.receiveTestMessage(channel.id)) return;
-  notificationMessage.value = `Demo message added to #${channel.name}. ${store.lastNotificationStatus}`;
-}
-function scheduleTestMessage() {
-  const channel = store.selectedChannel;
-  if (!channel || !store.scheduleTestMessage()) return;
-  notificationMessage.value =
-    "Demo incoming message scheduled. It will be added to the channel in 5 seconds. To test a Windows notification, switch tabs before then.";
-}
-function addTestMessageAndOpenChat() {
-  const channel = store.selectedChannel;
-  if (!channel || !store.user || store.user.status !== "Online") return;
-  if (!store.receiveTestMessage(channel.id)) return;
-  notificationMessage.value = `Demo message added to #${channel.name}. ${store.lastNotificationStatus}`;
-  void router.push("/main");
+/**
+ * Shows a notification right away, to check that the browser and the system
+ * let them through. Real ones appear only while BeBe is not visible.
+ */
+function showTestNotification() {
+  const shown = showNotification(
+    "BeBe",
+    "Notifications work. You will see one for new messages while BeBe is not visible.",
+    "bebe-test"
+  );
+  message.value = shown
+    ? "A test notification was sent. If you don't see it, check the notification settings of your system."
+    : "The browser does not allow notifications for BeBe.";
 }
 async function logout() {
   await auth.logout();
   void router.push("/login");
 }
-onBeforeUnmount(() => {
-  window.removeEventListener("focus", refreshNotificationPermission);
-});
+
+// The permission can be changed in the browser's own settings while this page is open
 onMounted(() => {
-  refreshNotificationPermission();
-  window.addEventListener("focus", refreshNotificationPermission);
+  refreshAccess();
+  window.addEventListener("focus", refreshAccess);
+});
+onBeforeUnmount(() => {
+  window.removeEventListener("focus", refreshAccess);
 });
 </script>

@@ -174,7 +174,7 @@ test.group('Live messages over WebSocket', (group) => {
 
     // What the channel endpoints call after /join ...
     await join(channel, mira.user)
-    ws.addToChannel(mira.user.id, channel.id)
+    ws.addToChannel(mira.user, channel.id)
     let received = nextEvent<{ body: string }>(socket, 'message:new')
     await post('first')
     assert.containsSubset(await received, { body: 'first' })
